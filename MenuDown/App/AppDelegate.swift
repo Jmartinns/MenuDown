@@ -15,9 +15,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let spacerManager = SpacerManager()
     private let iconCapturer = IconCapturer()
     private lazy var clickForwarder = ClickForwarder(spacerManager: spacerManager, scanner: scanner)
+    private lazy var reorderer = MenuBarReorderer(spacerManager: spacerManager, scanner: scanner)
     private var changeMonitor: ChangeMonitor?
     private var panelController: VerticalPanelController?
     private var cancellables = Set<AnyCancellable>()
+    private var globalHotkeyMonitor: Any?
+    private var localHotkeyMonitor: Any?
+    private var welcomeWindow: NSWindow?
 
     // MARK: - Lifecycle
 
@@ -35,7 +39,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         setupPanel()
         setupChangeMonitor()
+        setupGlobalHotkey()
         startScanning()
+
+        // Show welcome window on first launch
+        if Preferences.shared.isFirstLaunch {
+            Preferences.shared.markLaunched()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.showWelcomeWindow()
+            }
+        }
         
         // Check after a delay to let async scan complete
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
@@ -60,6 +73,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         spacerManager.reveal() // Ensure items are visible when we quit
         spacerManager.uninstall()
         changeMonitor?.stopMonitoring()
+        if let monitor = globalHotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = localHotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     // MARK: - Status Item
@@ -76,6 +95,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(statusItemClicked(_:))
             button.target = self
         }
+
+        // Let the scanner include MenuDown in its own list
+        scanner.selfStatusItem = statusItem
+        reorderer.selfStatusItem = statusItem
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -99,6 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onSettingsClicked: { [weak self] in
                 self?.showSettings()
+            },
+            onReorderApplied: { [weak self] items in
+                self?.reorderer.applyOrder(items)
             }
         )
     }
@@ -106,8 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Permissions
 
     private func checkPermissions() {
+        // Trigger the native macOS accessibility prompt if not yet trusted.
+        // No custom alert loops — the system prompt is sufficient.
         if !AccessibilityHelper.isAccessibilityEnabled {
-            promptForAccessibility()
+            AccessibilityHelper.requestAccessibilityPermission()
         }
 
         // Poll for accessibility permission changes — the user may grant
@@ -115,59 +143,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AccessibilityHelper.shared.startPolling(interval: 2.0) { [weak self] in
             self?.debugLog("Accessibility permission detected via polling — starting scan.")
             self?.scanner.scanAsync()
-        }
-
-        if !AccessibilityHelper.isScreenRecordingEnabled {
-            let alert = NSAlert()
-            alert.messageText = "Screen Recording Permission"
-            alert.informativeText = "MenuDown needs Screen Recording access to capture menubar item icons. Without it, app icons will be used as fallback."
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Open Settings")
-            alert.addButton(withTitle: "Later")
-
-            if alert.runModal() == .alertFirstButtonReturn {
-                AccessibilityHelper.openScreenRecordingSettings()
-            }
-        }
-    }
-
-    /// Prompt the user to grant Accessibility, with a loop for "recheck".
-    private func promptForAccessibility() {
-        // Trigger the system prompt (adds the app to System Settings list)
-        AccessibilityHelper.requestAccessibilityPermission()
-
-        while !AXIsProcessTrusted() {
-            let alert = NSAlert()
-            alert.messageText = "Accessibility Permission Required"
-            alert.informativeText = """
-            MenuDown needs Accessibility access to discover menubar items.
-
-            Please toggle MenuDown ON in:
-            System Settings → Privacy & Security → Accessibility
-
-            Tip: If you just rebuilt the app, you may need to remove the old \
-            MenuDown entry (−) and re-add it (+).
-            """
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Open Settings")
-            alert.addButton(withTitle: "Recheck Now")
-            alert.addButton(withTitle: "Skip")
-
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                AccessibilityHelper.openAccessibilitySettings()
-            } else if response == .alertThirdButtonReturn {
-                // User chose Skip
-                debugLog("User skipped accessibility prompt.")
-                break
-            }
-            // For "Recheck Now" or after opening settings, loop back
-            // and re-check AXIsProcessTrusted()
-            if AXIsProcessTrusted() {
-                debugLog("Recheck: AX is now trusted!")
-                scanner.scanAsync()
-                break
-            }
         }
     }
 
@@ -302,5 +277,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    // MARK: - Global Hotkey (⌥M)
+
+    private func setupGlobalHotkey() {
+        // Monitor key events when MenuDown is NOT the active app
+        globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleHotkey(event)
+        }
+        // Monitor key events when MenuDown IS the active app
+        localHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if self?.handleHotkey(event) == true {
+                return nil // Consume the event
+            }
+            return event
+        }
+    }
+
+    /// Returns true if the event was the ⌥M hotkey and was handled.
+    @discardableResult
+    private func handleHotkey(_ event: NSEvent) -> Bool {
+        // ⌥M: keyCode 46 = 'm', check for Option modifier only
+        guard event.keyCode == 46,
+              event.modifierFlags.contains(.option),
+              !event.modifierFlags.contains(.command),
+              !event.modifierFlags.contains(.control) else {
+            return false
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.togglePanelViaHotkey()
+        }
+        return true
+    }
+
+    private func togglePanelViaHotkey() {
+        guard let button = statusItem.button else { return }
+        panelController?.toggle(relativeTo: button)
+
+        if panelController?.isVisible == true {
+            scanner.scanAsync()
+            captureIconsInBackground()
+        }
+    }
+
+    // MARK: - Welcome Window
+
+    private func showWelcomeWindow() {
+        let welcomeView = WelcomeView(onDismiss: { [weak self] in
+            self?.welcomeWindow?.close()
+            self?.welcomeWindow = nil
+        })
+
+        let hostingController = NSHostingController(rootView: welcomeView)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 340),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = hostingController
+        window.title = "Welcome to MenuDown"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        self.welcomeWindow = window
     }
 }

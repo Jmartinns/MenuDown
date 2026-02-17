@@ -11,6 +11,7 @@ final class VerticalPanelController {
     private let scanner: MenuBarScanner
     private let onItemClicked: (MenuBarItem) -> Void
     private let onSettingsClicked: () -> Void
+    private let onReorderApplied: (([MenuBarItem]) -> Void)?
 
     var isVisible: Bool {
         panel?.isVisible ?? false
@@ -19,11 +20,13 @@ final class VerticalPanelController {
     init(
         scanner: MenuBarScanner,
         onItemClicked: @escaping (MenuBarItem) -> Void,
-        onSettingsClicked: @escaping () -> Void
+        onSettingsClicked: @escaping () -> Void,
+        onReorderApplied: (([MenuBarItem]) -> Void)? = nil
     ) {
         self.scanner = scanner
         self.onItemClicked = onItemClicked
         self.onSettingsClicked = onSettingsClicked
+        self.onReorderApplied = onReorderApplied
     }
 
     /// Show the panel anchored below the given status item button.
@@ -42,6 +45,12 @@ final class VerticalPanelController {
             onSettingsClicked: { [weak self] in
                 self?.dismiss()
                 self?.onSettingsClicked()
+            },
+            onReorderApplied: onReorderApplied.map { callback in
+                { [weak self] items in
+                    self?.dismiss()
+                    callback(items)
+                }
             }
         )
 
@@ -69,7 +78,7 @@ final class VerticalPanelController {
         visualEffect.autoresizingMask = [.width, .height]
 
         // Add the SwiftUI content on top of the visual effect
-        let hostingView = hostingController.view
+        let hostingView: NSView = hostingController.view
         hostingView.frame = NSRect(origin: .zero, size: contentSize)
         hostingView.autoresizingMask = [.width, .height]
 

@@ -37,6 +37,10 @@ final class MenuBarScanner: ObservableObject {
     /// When true, scanning is temporarily paused (e.g. while a forwarded menu is open).
     private(set) var isPaused = false
 
+    /// MenuDown's own NSStatusItem, set by AppDelegate so we can include
+    /// ourselves in the item list (AX can't discover our own extras).
+    var selfStatusItem: NSStatusItem?
+
     // MARK: - Public API
 
     /// Temporarily pause scanning (e.g. while a forwarded menu is open).
@@ -105,6 +109,12 @@ final class MenuBarScanner: ObservableObject {
                 self.lastScanDate = Date()
                 self.isScanning = false
 
+                // Resolve app icons on the main thread where AppKit APIs are safe.
+                // Icons are cached permanently so this is fast after the first pass.
+                for item in self.items {
+                    item.resolveIconIfNeeded()
+                }
+
                 self.scanLock.lock()
                 self._isScanningInternal = false
                 self.scanLock.unlock()
@@ -154,6 +164,31 @@ final class MenuBarScanner: ObservableObject {
         }
 
         thirdPartyItems.sort { $0.position.x < $1.position.x }
+
+        // Inject MenuDown's own item — AX can't discover our own extras
+        if let selfItem = selfStatusItem,
+           let button = selfItem.button,
+           let buttonWindow = button.window {
+            let bundleID = Bundle.main.bundleIdentifier ?? "com.menudown.app"
+            let frame = buttonWindow.frame
+            // Convert from bottom-left (AppKit) to top-left (AX/CG) coordinates
+            let screenHeight = NSScreen.main?.frame.height ?? 0
+            let axY = screenHeight - frame.maxY
+            let selfElement = AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
+            let selfMenuItem = MenuBarItem(
+                axElement: selfElement,
+                pid: ProcessInfo.processInfo.processIdentifier,
+                bundleID: bundleID,
+                appName: "MenuDown",
+                position: CGPoint(x: frame.origin.x, y: axY),
+                size: CGSize(width: frame.width, height: frame.height),
+                title: "MenuDown",
+                index: 0
+            )
+            thirdPartyItems.append(selfMenuItem)
+            thirdPartyItems.sort { $0.position.x < $1.position.x }
+        }
+
         return thirdPartyItems
     }
 

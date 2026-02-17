@@ -14,6 +14,8 @@ final class Preferences: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let excludedBundleIDs = "excludedBundleIDs"
         static let customNames = "customNames"
+        static let hasLaunchedBefore = "hasLaunchedBefore"
+        static let itemOrder = "itemOrder"
     }
 
     /// Whether the spacer that hides third-party items is active.
@@ -66,5 +68,29 @@ final class Preferences: ObservableObject {
         self.excludedBundleIDs = Set(excludedArray)
 
         self.customNames = defaults.object(forKey: Keys.customNames) as? [String: String] ?? [:]
+    }
+
+    /// Whether this is the first time the app has been launched.
+    var isFirstLaunch: Bool {
+        !defaults.bool(forKey: Keys.hasLaunchedBefore)
+    }
+
+    /// Mark that the app has been launched at least once.
+    func markLaunched() {
+        defaults.set(true, forKey: Keys.hasLaunchedBefore)
+    }
+
+    // MARK: - Item Order
+
+    /// Saved ordering of menubar items, stored as an array of bundle IDs.
+    /// Items not in this list appear at the end in their natural order.
+    var itemOrder: [String] {
+        get { defaults.object(forKey: Keys.itemOrder) as? [String] ?? [] }
+        set { defaults.set(newValue, forKey: Keys.itemOrder) }
+    }
+
+    /// Returns true if the user has set a custom order.
+    var hasCustomOrder: Bool {
+        !itemOrder.isEmpty
     }
 }

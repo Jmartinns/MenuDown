@@ -17,7 +17,26 @@ final class MenuBarItem: Identifiable, ObservableObject {
 
     /// The app's icon, resolved eagerly at init time so the UI never
     /// shows a placeholder while waiting for the screenshot-based capture.
-    let appIcon: NSImage?
+    @Published var appIcon: NSImage?
+
+    /// Permanent icon cache shared across all MenuBarItem instances.
+    /// Uses a plain dictionary (not NSCache) so icons are never auto-evicted.
+    private static var iconStore: [String: NSImage] = [:]
+    private static let iconLock = NSLock()
+
+    /// Look up a cached icon, thread-safe.
+    private static func cachedIcon(for bundleID: String) -> NSImage? {
+        iconLock.lock()
+        defer { iconLock.unlock() }
+        return iconStore[bundleID]
+    }
+
+    /// Store an icon in the cache, thread-safe.
+    private static func cacheIcon(_ icon: NSImage, for bundleID: String) {
+        iconLock.lock()
+        iconStore[bundleID] = icon
+        iconLock.unlock()
+    }
 
     init(
         axElement: AXUIElement,
@@ -37,7 +56,37 @@ final class MenuBarItem: Identifiable, ObservableObject {
         self.size = size
         self.title = title
         self.id = "\(bundleID)_\(index)"
-        self.appIcon = NSRunningApplication(processIdentifier: pid)?.icon
+
+        // Use the permanent cache — icons resolved once stay forever.
+        // This avoids issues with NSRunningApplication.icon returning nil
+        // on background threads.
+        self.appIcon = Self.cachedIcon(for: bundleID)
+    }
+
+    /// Resolve and cache this item's icon. Must be called on the main thread
+    /// (AppKit icon APIs are not thread-safe).
+    func resolveIconIfNeeded() {
+        guard appIcon == nil else { return }
+
+        // Check cache again (another item with the same bundle ID may have resolved it)
+        if let cached = Self.cachedIcon(for: bundleID) {
+            appIcon = cached
+            return
+        }
+
+        if let icon = NSRunningApplication(processIdentifier: pid)?.icon {
+            Self.cacheIcon(icon, for: bundleID)
+            appIcon = icon
+        } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            Self.cacheIcon(icon, for: bundleID)
+            appIcon = icon
+        }
+    }
+
+    /// Whether this item represents MenuDown itself.
+    var isSelf: Bool {
+        bundleID == (Bundle.main.bundleIdentifier ?? "com.menudown.app")
     }
 
     /// Display name: prefer user override, then app name.
@@ -62,11 +111,6 @@ final class MenuBarItem: Identifiable, ObservableObject {
 
     /// Whether this item belongs to a system (Apple) process.
     static func isSystemProcess(bundleID: String) -> Bool {
-        // MenuDown's own status item should not appear in its own list
-        if bundleID == Bundle.main.bundleIdentifier ?? "com.menudown.app" {
-            return true
-        }
-
         // Known system menubar processes
         let alwaysSystem: Set<String> = [
             "com.apple.controlcenter",

@@ -1,210 +1,248 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MenuDown — Vertical Menubar for macOS</title>
     <style>
-        :root {
-            --bg: #1a1a2e;
-            --surface: #16213e;
-            --accent: #0f3460;
-            --highlight: #e94560;
-            --text: #eee;
-            --text-muted: #aab;
-        }
+      :root {
+        --bg: #1a1a2e;
+        --surface: #16213e;
+        --accent: #0f3460;
+        --highlight: #e94560;
+        --text: #eee;
+        --text-muted: #aab;
+      }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
 
-        .hero {
-            text-align: center;
-            padding: 80px 20px 40px;
-            max-width: 700px;
-        }
+      .hero {
+        text-align: center;
+        padding: 80px 20px 40px;
+        max-width: 700px;
+      }
 
-        .hero h1 {
-            font-size: 3rem;
-            font-weight: 700;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, #e94560, #0f3460);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+      .hero h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        background: linear-gradient(135deg, #e94560, #0f3460);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
 
-        .hero .tagline {
-            font-size: 1.25rem;
-            color: var(--text-muted);
-            margin-bottom: 32px;
-            line-height: 1.6;
-        }
+      .hero .tagline {
+        font-size: 1.25rem;
+        color: var(--text-muted);
+        margin-bottom: 32px;
+        line-height: 1.6;
+      }
 
-        .download-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--highlight);
-            color: white;
-            padding: 14px 32px;
-            border-radius: 12px;
-            text-decoration: none;
-            font-size: 1.1rem;
-            font-weight: 600;
-            transition: transform 0.15s, box-shadow 0.15s;
-            box-shadow: 0 4px 20px rgba(233, 69, 96, 0.3);
-        }
+      .download-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--highlight);
+        color: white;
+        padding: 14px 32px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-size: 1.1rem;
+        font-weight: 600;
+        transition:
+          transform 0.15s,
+          box-shadow 0.15s;
+        box-shadow: 0 4px 20px rgba(233, 69, 96, 0.3);
+      }
 
-        .download-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 28px rgba(233, 69, 96, 0.45);
-        }
+      .download-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 28px rgba(233, 69, 96, 0.45);
+      }
 
-        .download-btn svg {
-            width: 20px;
-            height: 20px;
-            fill: currentColor;
-        }
+      .download-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
 
-        .meta {
-            margin-top: 12px;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
+      .meta {
+        margin-top: 12px;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
 
-        .meta a {
-            color: var(--text-muted);
-            text-decoration: underline;
-        }
+      .meta a {
+        color: var(--text-muted);
+        text-decoration: underline;
+      }
 
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 24px;
-            max-width: 800px;
-            padding: 40px 20px 60px;
-        }
+      .features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 24px;
+        max-width: 800px;
+        padding: 40px 20px 60px;
+      }
 
-        .feature {
-            background: var(--surface);
-            border-radius: 14px;
-            padding: 28px 24px;
-            border: 1px solid rgba(255,255,255,0.06);
-        }
+      .feature {
+        background: var(--surface);
+        border-radius: 14px;
+        padding: 28px 24px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
 
-        .feature .icon {
-            font-size: 2rem;
-            margin-bottom: 12px;
-        }
+      .feature .icon {
+        font-size: 2rem;
+        margin-bottom: 12px;
+      }
 
-        .feature h3 {
-            font-size: 1.1rem;
-            margin-bottom: 8px;
-        }
+      .feature h3 {
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+      }
 
-        .feature p {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
+      .feature p {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
 
-        .requirements {
-            text-align: center;
-            padding: 20px;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            max-width: 600px;
-        }
+      .requirements {
+        text-align: center;
+        padding: 20px;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        max-width: 600px;
+      }
 
-        .requirements p {
-            margin-bottom: 6px;
-        }
+      .requirements p {
+        margin-bottom: 6px;
+      }
 
-        footer {
-            text-align: center;
-            padding: 40px 20px;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            border-top: 1px solid rgba(255,255,255,0.06);
-            width: 100%;
-            margin-top: auto;
-        }
+      footer {
+        text-align: center;
+        padding: 40px 20px;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        width: 100%;
+        margin-top: auto;
+      }
 
-        footer a {
-            color: var(--highlight);
-            text-decoration: none;
-        }
+      footer a {
+        color: var(--highlight);
+        text-decoration: none;
+      }
     </style>
-</head>
-<body>
-
+  </head>
+  <body>
     <div class="hero">
-        <h1>MenuDown</h1>
-        <p class="tagline">
-            Reclaim your menubar from the notch.<br>
-            MenuDown displays your third-party menubar items vertically,
-            so nothing hides behind the MacBook notch ever again.
-        </p>
-        <a href="https://github.com/Jmartinns/MenuDown/releases/latest/download/MenuDown.dmg" class="download-btn">
-            <svg viewBox="0 0 24 24"><path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-8 4h16v-2H4v2z"/></svg>
-            Download MenuDown
-        </a>
-        <p class="meta">
-            macOS 13 Ventura or later &middot; Apple Silicon &amp; Intel<br>
-            <a href="https://github.com/Jmartinns/MenuDown/releases">View all releases</a> &middot;
-            <a href="https://github.com/Jmartinns/MenuDown">Source on GitHub</a>
-        </p>
+      <h1>MenuDown</h1>
+      <p class="tagline">
+        Reclaim your menubar from the notch.<br />
+        MenuDown displays your third-party menubar items vertically, so nothing
+        hides behind the MacBook notch ever again.
+      </p>
+      <a
+        href="https://github.com/Jmartinns/MenuDown/releases/latest/download/MenuDown.dmg"
+        class="download-btn"
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M12 16l-6-6h4V4h4v6h4l-6 6zm-8 4h16v-2H4v2z" />
+        </svg>
+        Download MenuDown
+      </a>
+      <p class="meta">
+        macOS 13 Ventura or later &middot; Apple Silicon &amp; Intel<br />
+        <a href="https://github.com/Jmartinns/MenuDown/releases"
+          >View all releases</a
+        >
+        &middot;
+        <a href="https://github.com/Jmartinns/MenuDown">Source on GitHub</a>
+      </p>
     </div>
 
     <div class="features">
-        <div class="feature">
-            <div class="icon">📐</div>
-            <h3>Vertical Layout</h3>
-            <p>All your third-party menubar items arranged in a clean vertical list — no more guessing what's hidden behind the notch.</p>
-        </div>
-        <div class="feature">
-            <div class="icon">🔍</div>
-            <h3>Auto-Discovery</h3>
-            <p>Automatically detects third-party menubar apps using the macOS Accessibility API. No manual configuration needed.</p>
-        </div>
-        <div class="feature">
-            <div class="icon">⚡</div>
-            <h3>Instant Access</h3>
-            <p>Click any item to open its original menu. Works just like clicking the real menubar icon — because it is.</p>
-        </div>
-        <div class="feature">
-            <div class="icon">🪶</div>
-            <h3>Lightweight</h3>
-            <p>Native Swift app with no dependencies. Scans in under half a second. Lives quietly in your menubar.</p>
-        </div>
-        <div class="feature">
-            <div class="icon">🏷️</div>
-            <h3>Custom Names</h3>
-            <p>Right-click any item to rename it. Useful when apps use cryptic internal names for their menubar icons.</p>
-        </div>
-        <div class="feature">
-            <div class="icon">🔒</div>
-            <h3>Privacy First</h3>
-            <p>No network access, no analytics, no telemetry. MenuDown only talks to macOS APIs on your machine.</p>
-        </div>
+      <div class="feature">
+        <div class="icon">📐</div>
+        <h3>Vertical Layout</h3>
+        <p>
+          All your third-party menubar items arranged in a clean vertical list —
+          no more guessing what's hidden behind the notch.
+        </p>
+      </div>
+      <div class="feature">
+        <div class="icon">🔍</div>
+        <h3>Auto-Discovery</h3>
+        <p>
+          Automatically detects third-party menubar apps using the macOS
+          Accessibility API. No manual configuration needed.
+        </p>
+      </div>
+      <div class="feature">
+        <div class="icon">⚡</div>
+        <h3>Instant Access</h3>
+        <p>
+          Click any item to open its original menu. Works just like clicking the
+          real menubar icon — because it is.
+        </p>
+      </div>
+      <div class="feature">
+        <div class="icon">🪶</div>
+        <h3>Lightweight</h3>
+        <p>
+          Native Swift app with no dependencies. Scans in under half a second.
+          Lives quietly in your menubar.
+        </p>
+      </div>
+      <div class="feature">
+        <div class="icon">🏷️</div>
+        <h3>Custom Names</h3>
+        <p>
+          Right-click any item to rename it. Useful when apps use cryptic
+          internal names for their menubar icons.
+        </p>
+      </div>
+      <div class="feature">
+        <div class="icon">🔒</div>
+        <h3>Privacy First</h3>
+        <p>
+          No network access, no analytics, no telemetry. MenuDown only talks to
+          macOS APIs on your machine.
+        </p>
+      </div>
     </div>
 
     <div class="requirements">
-        <p><strong>Requirements:</strong> macOS 13 Ventura or later. Requires Accessibility permission on first launch.</p>
-        <p>MenuDown is free and open source under the MIT license.</p>
+      <p>
+        <strong>Requirements:</strong> macOS 13 Ventura or later. Requires
+        Accessibility permission on first launch.
+      </p>
+      <p>MenuDown is free and open source under the MIT license.</p>
     </div>
 
     <footer>
-        <p>Made by <a href="https://github.com/Jmartinns">Joey Martin</a> &middot; <a href="https://github.com/Jmartinns/MenuDown">GitHub</a></p>
+      <p>
+        Made by <a href="https://github.com/Jmartinns">Joey Martin</a> &middot;
+        <a href="https://github.com/Jmartinns/MenuDown">GitHub</a>
+      </p>
     </footer>
-
-</body>
+  </body>
 </html>

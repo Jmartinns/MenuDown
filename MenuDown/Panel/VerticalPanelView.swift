@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The SwiftUI view rendered inside the vertical panel, showing a list of
 /// third-party menubar items arranged vertically.
@@ -7,6 +8,17 @@ struct VerticalPanelView: View {
     @ObservedObject var scanner: MenuBarScanner
     let onItemClicked: (MenuBarItem) -> Void
     let onSettingsClicked: () -> Void
+    let onReorderApplied: (([MenuBarItem]) -> Void)?
+
+    /// The locally-ordered list. Starts from scanner.items but can be
+    /// rearranged by the user via drag-and-drop.
+    @State private var orderedItems: [MenuBarItem] = []
+
+    /// Whether the local order differs from the scanner's natural order.
+    @State private var orderDirty = false
+
+    /// The item currently being dragged, if any.
+    @State private var draggingItem: MenuBarItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,10 +29,30 @@ struct VerticalPanelView: View {
             } else {
                 itemList
             }
+            applyOrderBar
+                .opacity(orderDirty ? 1 : 0)
+                .allowsHitTesting(orderDirty)
             Divider()
             footerBar
         }
         .frame(width: 220)
+        .onChange(of: scanner.items.map(\.id)) { _ in
+            syncOrder()
+        }
+        .onAppear {
+            syncOrder()
+        }
+    }
+
+    // MARK: - Order syncing
+
+    /// Show items in their actual menubar order (sorted by X position).
+    /// This ensures the panel always reflects reality, so when the user
+    /// drags to reorder, only their explicit changes are applied — no
+    /// phantom corrections from stale saved preferences.
+    private func syncOrder() {
+        orderedItems = scanner.items.sorted { $0.position.x < $1.position.x }
+        orderDirty = false
     }
 
     // MARK: - Subviews
@@ -28,16 +60,58 @@ struct VerticalPanelView: View {
     private var itemList: some View {
         ScrollView {
             VStack(spacing: 1) {
-                ForEach(scanner.items) { item in
+                ForEach(orderedItems) { item in
                     ItemRow(item: item) {
                         onItemClicked(item)
                     }
+                    .onDrag {
+                        self.draggingItem = item
+                        return NSItemProvider(object: item.id as NSString)
+                    }
+                    .onDrop(
+                        of: [UTType.text],
+                        delegate: ItemReorderDropDelegate(
+                            item: item,
+                            items: $orderedItems,
+                            draggingItem: $draggingItem,
+                            orderDirty: $orderDirty
+                        )
+                    )
+                    .opacity(draggingItem?.id == item.id ? 0.4 : 1.0)
                 }
             }
             .padding(.vertical, 4)
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxHeight: 400)
+    }
+
+    private var applyOrderBar: some View {
+        HStack {
+            Button("Reset") {
+                syncOrder()
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button {
+                // Save order to preferences
+                Preferences.shared.itemOrder = orderedItems.map(\.bundleID)
+                orderDirty = false
+                // Trigger the physical reorder callback
+                onReorderApplied?(orderedItems)
+            } label: {
+                Label("Apply Order", systemImage: "arrow.up.arrow.down")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private var emptyState: some View {
@@ -110,7 +184,9 @@ struct ItemRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                DragGrip()
+
                 iconView
                     .frame(width: 20, height: 20)
 
@@ -171,18 +247,31 @@ struct ItemRow: View {
 
     @ViewBuilder
     private var iconView: some View {
-        if let icon = item.capturedIcon {
-            Image(nsImage: icon)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-        } else if let appIcon = item.appIcon {
+        if let appIcon = item.appIcon {
             Image(nsImage: appIcon)
                 .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+        } else if let icon = item.capturedIcon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+        } else if let wsIcon = Self.iconFromBundleID(item.bundleID) {
+            Image(nsImage: wsIcon)
+                .resizable()
+                .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
         } else {
             Image(systemName: "app.fill")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Look up an app icon via NSWorkspace as a last-resort fallback.
+    private static func iconFromBundleID(_ bundleID: String) -> NSImage? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+        return NSWorkspace.shared.icon(forFile: url.path)
     }
 }
 
@@ -221,5 +310,64 @@ struct RenameSheet: View {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         onSave(trimmed)
+    }
+}
+
+// MARK: - Drag-and-Drop Reorder Delegate
+
+/// Handles the drop logic for reordering items within the VStack.
+struct ItemReorderDropDelegate: DropDelegate {
+    let item: MenuBarItem
+    @Binding var items: [MenuBarItem]
+    @Binding var draggingItem: MenuBarItem?
+    @Binding var orderDirty: Bool
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingItem = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingItem,
+              dragging.id != item.id,
+              let fromIndex = items.firstIndex(where: { $0.id == dragging.id }),
+              let toIndex = items.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            items.move(fromOffsets: IndexSet(integer: fromIndex),
+                       toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+        }
+        orderDirty = true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        true
+    }
+}
+
+// MARK: - Drag Grip
+
+/// A 2×3 dot grid drag handle, matching the standard grip pattern.
+struct DragGrip: View {
+    var body: some View {
+        VStack(spacing: 3) {
+            dotRow
+            dotRow
+            dotRow
+        }
+        .frame(width: 8)
+    }
+
+    private var dotRow: some View {
+        HStack(spacing: 3) {
+            Circle().frame(width: 3, height: 3)
+            Circle().frame(width: 3, height: 3)
+        }
+        .foregroundStyle(.quaternary)
     }
 }

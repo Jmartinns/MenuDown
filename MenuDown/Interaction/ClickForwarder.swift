@@ -17,6 +17,9 @@ final class ClickForwarder {
     /// Reveals hidden items, pauses scanning, performs the click, then waits for
     /// menu dismissal to re-hide and resume scanning.
     func click(_ item: MenuBarItem) {
+        // Don't forward clicks to MenuDown's own status item
+        guard !item.isSelf else { return }
+
         // Pause scanning — AX queries from the scanner can interrupt
         // another app's menu tracking and cause the menu to close.
         scanner?.pause()
