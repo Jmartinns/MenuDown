@@ -1,0 +1,47 @@
+name: MenuDown
+options:
+  bundleIdPrefix: com.menudown
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+targets:
+  MenuDown:
+    type: application
+    platform: macOS
+    sources:
+      - path: MenuDown
+        excludes:
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.menudown.app
+        PRODUCT_NAME: MenuDown
+        INFOPLIST_FILE: MenuDown/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: MenuDown/MenuDown.entitlements
+        COMBINE_HIDPI_IMAGES: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+
+        # No dock icon — menubar only
+        # (configured via LSUIElement in Info.plist)
+
+        # Disable sandbox for AX + screen capture
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: false
+        ENABLE_HARDENED_RUNTIME: false
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: true
+    postBuildScripts:
+      - name: "Reset TCC Accessibility for dev builds"
+        script: |
+          # Each rebuild changes the code signature, invalidating the old TCC entry.
+          # Reset it so the next launch gets a fresh Accessibility prompt.
+          tccutil reset Accessibility com.menudown.app 2>/dev/null || true
+        basedOnDependencyAnalysis: false
