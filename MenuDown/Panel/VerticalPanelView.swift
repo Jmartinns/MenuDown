@@ -183,38 +183,44 @@ struct ItemRow: View {
     @State private var currentDisplayName = ""
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                DragGrip()
-                    .onDrag(onDrag ?? { NSItemProvider() })
+        HStack(spacing: 0) {
+            DragGrip()
+                .padding(.leading, 10)
+                .padding(.trailing, 4)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onDrag(onDrag ?? { NSItemProvider() })
 
-                iconView
-                    .frame(width: 20, height: 20)
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    iconView
+                        .frame(width: 20, height: 20)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(currentDisplayName)
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                    // Only show subtitle when it differs from display name
-                    if item.appName != currentDisplayName {
-                        Text(item.appName)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(currentDisplayName)
+                            .font(.system(size: 13))
                             .lineLimit(1)
+                        // Only show subtitle when it differs from display name
+                        if item.appName != currentDisplayName {
+                            Text(item.appName)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
                     }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.quaternary)
                 }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.quaternary)
+                .padding(.trailing, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         .background(Color.clear)
         .cornerRadius(4)
         .padding(.horizontal, 4)

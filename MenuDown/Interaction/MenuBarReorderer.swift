@@ -72,37 +72,62 @@ final class MenuBarReorderer {
             // in one move (macOS shifts everything in between automatically).
 
             for desiredIdx in 0..<desiredOrder.count {
-                // Re-read positions to account for shifts from previous drags
-                let freshPositions = self.readPositions(for: desiredOrder)
-                let freshSortedByX = freshPositions.sorted { $0.x < $1.x }
-
-                guard desiredIdx < freshSortedByX.count else { break }
-
                 let targetBundleID = desiredOrder[desiredIdx].bundleID
-                let currentAtSlot = freshSortedByX[desiredIdx]
 
-                if currentAtSlot.bundleID == targetBundleID {
-                    debugLog("\(targetBundleID) already at slot \(desiredIdx)")
-                    continue
+                // Retry up to 3 times if the drag doesn't land correctly
+                for attempt in 0..<3 {
+                    // Re-read positions to account for shifts from previous drags
+                    let freshPositions = self.readPositions(for: desiredOrder)
+                    let freshSortedByX = freshPositions.sorted { $0.x < $1.x }
+
+                    guard desiredIdx < freshSortedByX.count else { break }
+
+                    let currentAtSlot = freshSortedByX[desiredIdx]
+
+                    if currentAtSlot.bundleID == targetBundleID {
+                        debugLog("\(targetBundleID) already at slot \(desiredIdx)\(attempt > 0 ? " (after \(attempt) retries)" : "")")
+                        break
+                    }
+
+                    // Find the item that belongs here
+                    guard let sourceIdx = freshSortedByX.firstIndex(where: { $0.bundleID == targetBundleID }) else {
+                        debugLog("Could not find \(targetBundleID), skipping.")
+                        break
+                    }
+
+                    let sourceInfo = freshSortedByX[sourceIdx]
+                    let fromX = sourceInfo.x + sourceInfo.width / 2
+                    let y = sourceInfo.y + sourceInfo.height / 2
+
+                    // Collect midpoints of all intermediate items between source
+                    // and target. We'll pause at each one so macOS registers the swap.
+                    let movingLeft = sourceIdx > desiredIdx
+                    var waypointXs: [CGFloat] = []
+                    if movingLeft {
+                        // Moving left: pass through items at indices desiredIdx..<sourceIdx
+                        for i in stride(from: sourceIdx - 1, through: desiredIdx, by: -1) {
+                            waypointXs.append(freshSortedByX[i].x + freshSortedByX[i].width / 2)
+                        }
+                        // Final overshoot past the left edge
+                        waypointXs.append(freshSortedByX[desiredIdx].x - 4)
+                    } else {
+                        // Moving right: pass through items at indices (sourceIdx+1)...desiredIdx
+                        for i in (sourceIdx + 1)...desiredIdx {
+                            waypointXs.append(freshSortedByX[i].x + freshSortedByX[i].width / 2)
+                        }
+                        // Final overshoot past the right edge
+                        waypointXs.append(freshSortedByX[desiredIdx].x + freshSortedByX[desiredIdx].width + 4)
+                    }
+
+                    debugLog("Drag \(targetBundleID): x=\(Int(fromX)) → \(waypointXs.map { Int($0) }) (attempt \(attempt + 1))")
+                    self.syntheticCommandDrag(
+                        from: CGPoint(x: fromX, y: y),
+                        waypoints: waypointXs.map { CGPoint(x: $0, y: y) }
+                    )
+
+                    // Wait for the menubar to settle
+                    Thread.sleep(forTimeInterval: 0.5)
                 }
-
-                // Find the item that belongs here — it's somewhere to the right
-                guard let sourceInfo = freshPositions.first(where: { $0.bundleID == targetBundleID }) else {
-                    debugLog("Could not find \(targetBundleID), skipping.")
-                    continue
-                }
-
-                // Drag it directly to the target slot in one move
-                let fromX = sourceInfo.x + sourceInfo.width / 2
-                let toX = currentAtSlot.x + currentAtSlot.width / 2
-                let y = sourceInfo.y + sourceInfo.height / 2
-
-                debugLog("Drag \(targetBundleID): x=\(Int(fromX)) → x=\(Int(toX))")
-                self.syntheticCommandDrag(from: CGPoint(x: fromX, y: y),
-                                          to: CGPoint(x: toX, y: y))
-
-                // Wait for the menubar to settle
-                Thread.sleep(forTimeInterval: 0.5)
             }
 
             debugLog("Reorder complete.")
@@ -189,9 +214,10 @@ final class MenuBarReorderer {
 
     // MARK: - Synthetic Command-Drag
 
-    /// Synthesize a Command-drag from one point to another.
-    /// This mimics the user holding ⌘ and dragging a menubar icon.
-    private func syntheticCommandDrag(from start: CGPoint, to end: CGPoint) {
+    /// Synthesize a Command-drag that pauses at each waypoint so macOS
+    /// can register the swap at every intermediate item boundary.
+    private func syntheticCommandDrag(from start: CGPoint, waypoints: [CGPoint]) {
+        guard !waypoints.isEmpty else { return }
         let source = CGEventSource(stateID: .combinedSessionState)
 
         // 1. Move cursor to start position
@@ -209,28 +235,40 @@ final class MenuBarReorderer {
                                 mouseButton: .left)
         mouseDown?.flags = .maskCommand
         mouseDown?.post(tap: .cghidEventTap)
-        usleep(100_000) // 100ms — give the system time to enter drag mode
+        usleep(200_000) // 200ms — give the system time to enter drag mode
 
-        // 3. Drag across in steps to ensure the system registers it as a drag
-        let steps = 10
-        for i in 1...steps {
-            let fraction = CGFloat(i) / CGFloat(steps)
-            let intermediate = CGPoint(
-                x: start.x + (end.x - start.x) * fraction,
-                y: start.y + (end.y - start.y) * fraction
-            )
-            let drag = CGEvent(mouseEventSource: source,
-                               mouseType: .leftMouseDragged,
-                               mouseCursorPosition: intermediate,
-                               mouseButton: .left)
-            drag?.flags = .maskCommand
-            drag?.post(tap: .cghidEventTap)
-            usleep(20_000) // 20ms between steps
+        // 3. Drag through each waypoint, pausing at each one for macOS to
+        //    register the swap. We smoothly interpolate between waypoints
+        //    and dwell at each midpoint crossing.
+        var current = start
+        for waypoint in waypoints {
+            let segmentDist = abs(waypoint.x - current.x)
+            let segmentSteps = max(8, Int(segmentDist / 3))
+
+            for i in 1...segmentSteps {
+                let fraction = CGFloat(i) / CGFloat(segmentSteps)
+                let intermediate = CGPoint(
+                    x: current.x + (waypoint.x - current.x) * fraction,
+                    y: current.y + (waypoint.y - current.y) * fraction
+                )
+                let drag = CGEvent(mouseEventSource: source,
+                                   mouseType: .leftMouseDragged,
+                                   mouseCursorPosition: intermediate,
+                                   mouseButton: .left)
+                drag?.flags = .maskCommand
+                drag?.post(tap: .cghidEventTap)
+                usleep(15_000) // 15ms between micro-steps
+            }
+
+            // Dwell at the waypoint so macOS processes the swap
+            usleep(120_000) // 120ms pause at each item boundary
+            current = waypoint
         }
 
         usleep(50_000) // 50ms settle
 
-        // 4. Mouse up at end position
+        // 4. Mouse up at final position
+        let end = waypoints.last!
         let mouseUp = CGEvent(mouseEventSource: source,
                               mouseType: .leftMouseUp,
                               mouseCursorPosition: end,

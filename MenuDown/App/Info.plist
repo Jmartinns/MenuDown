@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>MenuDown</string>
 	<key>CFBundleExecutable</key>
 	<string>MenuDown</string>
 	<key>CFBundleIdentifier</key>
@@ -12,29 +14,27 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>MenuDown</string>
-	<key>CFBundleDisplayName</key>
-	<string>MenuDown</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.2</string>
+	<string>0.4.0</string>
 	<key>CFBundleVersion</key>
-	<string>6</string>
+	<string>7</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 MenuDown. All rights reserved.</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>MenuDown needs Accessibility access to discover and interact with menubar items from other applications.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 MenuDown. All rights reserved.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>MenuDown needs Screen Recording access to capture menubar item icons for display in the vertical panel.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://jmartinns.github.io/MenuDown/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>QUvpjcExqXppFtl21MzchH0NmUGhyB3elHRCROYQ+Ek=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 </dict>
 </plist>

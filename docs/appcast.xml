@@ -6,6 +6,26 @@
     <description>Most recent updates to MenuDown.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.0</title>
+      <sparkle:version>7</sparkle:version>
+      <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>What's New</h2>
+        <ul>
+          <li>Improved drag-to-reorder grip reliability</li>
+          <li>Fixed menubar reorder moving icons one position at a time</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 17 Feb 2026 19:05:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.4.0/MenuDown.dmg"
+        sparkle:edSignature="95SQFrs+AH7EznMSuBg00zXkqn4TQFOGmipsuCPYFivHw2nBz8YfK9vjJSlEjK+4sM39CCPIgL4zRLaHE3NkDw=="
+        length="3462806"
+        type="application/octet-stream"
+      />
+    </item>
+    <item>
       <title>Version 0.3.2</title>
       <sparkle:version>6</sparkle:version>
       <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
