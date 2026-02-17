@@ -6,6 +6,26 @@
     <description>Most recent updates to MenuDown.</description>
     <language>en</language>
     <item>
+      <title>Version 0.3.1</title>
+      <sparkle:version>5</sparkle:version>
+      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>Improvements</h2>
+        <ul>
+          <li>DMG now includes Applications folder for easy drag-to-install</li>
+          <li>Added favicon to the GitHub Pages site</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 17 Feb 2026 17:45:00 -0500</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.3.1/MenuDown.dmg"
+        sparkle:edSignature="aXf3iHAvxPikTqp5SXJ7A2NpXPhMaD3EKcMoal16Q00kMl6MaIT5GzK3lM0E4xATtqjOCYxUY2MHLZT7+3p5Cw=="
+        length="3422269"
+        type="application/octet-stream"
+      />
+    </item>
+    <item>
       <title>Version 0.3.0</title>
       <sparkle:version>4</sparkle:version>
       <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
