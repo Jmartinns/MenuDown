@@ -88,10 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.autosaveName = "com.menudown.main"
 
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "arrow.down.circle",
-                accessibilityDescription: "MenuDown"
-            )
+            let icon = NSImage(named: "MenuBarIcon")
+            icon?.isTemplate = true
+            button.image = icon
             button.action = #selector(statusItemClicked(_:))
             button.target = self
         }
