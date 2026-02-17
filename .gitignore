@@ -1,5 +1,6 @@
 # Xcode build output
 build/
+build-release/
 DerivedData/
 
 # Xcode user-specific files
@@ -15,3 +16,6 @@ MenuDown.xcodeproj/
 
 # Debug logs
 /tmp/menudown_debug.log
+
+# Release artifacts (hosted via GitHub Releases, not in repo)
+*.dmg
