@@ -2,6 +2,7 @@ import Cocoa
 import SwiftUI
 import Combine
 import os.log
+import Sparkle
 
 private let appLogger = Logger(subsystem: "com.menudown.app", category: "app")
 
@@ -22,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalHotkeyMonitor: Any?
     private var localHotkeyMonitor: Any?
     private var welcomeWindow: NSWindow?
+    private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     // MARK: - Lifecycle
 
@@ -240,6 +242,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        // Check for Updates
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
+
         // About
         let aboutItem = NSMenuItem(title: "About MenuDown", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.target = self
@@ -276,6 +283,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showAbout() {
         NSApp.orderFrontStandardAboutPanel(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
     }
 
     @objc private func quitApp() {

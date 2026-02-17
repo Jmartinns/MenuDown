@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>MenuDown Updates</title>
+    <link>https://jmartinns.github.io/MenuDown/appcast.xml</link>
+    <description>Most recent updates to MenuDown.</description>
+    <language>en</language>
+    <item>
+      <title>Version 0.3.0</title>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>What's New</h2>
+        <ul>
+          <li>Automatic update checking via Sparkle — you'll be notified when new versions are available</li>
+          <li>"Check for Updates…" menu item in Settings</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 17 Feb 2026 17:35:00 -0500</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.3.0/MenuDown.dmg"
+        sparkle:edSignature="442C4a2w7vAVIPUZ57CvT3DKQsCKqiWRl3KrHLnpAmX2Tr9oE9lepebBBlg3wRL0I+VGlBPRLV9/LNL/+etnAQ=="
+        length="3433792"
+        type="application/octet-stream"
+      />
+    </item>
+    <item>
+      <title>Version 0.2.1</title>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>Bug Fixes</h2>
+        <ul>
+          <li>Fixed click forwarding — clicking items in the panel now properly activates their menus</li>
+          <li>Fixed Option+M hotkey not working after fresh accessibility permission grant</li>
+          <li>Drag-to-reorder now uses the grip handle only, so it no longer conflicts with clicks</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 17 Feb 2026 17:10:00 -0500</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.2.1/MenuDown.dmg"
+        sparkle:edSignature="NueccXcRd3QYPyo0hFdVWxJ8jHcHypMAl+ozO5Cpc/FnO2dOaFTn4PC3H2o+dMm3wAskd7jqsLq37R5MCJkJAA=="
+        length="1777159"
+        type="application/octet-stream"
+      />
+    </item>
+  </channel>
+</rss>
