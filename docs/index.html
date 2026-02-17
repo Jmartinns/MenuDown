@@ -6,12 +6,12 @@
     <title>MenuDown — Vertical Menubar for macOS</title>
     <style>
       :root {
-        --bg: #1a1a2e;
-        --surface: #16213e;
-        --accent: #0f3460;
-        --highlight: #e94560;
-        --text: #eee;
-        --text-muted: #aab;
+        --bg: #0d0d1a;
+        --surface: #161625;
+        --accent: #1e1e3a;
+        --highlight: #c840e9;
+        --text: #f0f0f5;
+        --text-muted: #9a9ab5;
       }
 
       * {
@@ -42,7 +42,7 @@
         font-size: 3rem;
         font-weight: 700;
         margin-bottom: 8px;
-        background: linear-gradient(135deg, #e94560, #0f3460);
+        background: linear-gradient(135deg, #f304f5, #4040ff, #ff3030);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
       }
@@ -68,12 +68,12 @@
         transition:
           transform 0.15s,
           box-shadow 0.15s;
-        box-shadow: 0 4px 20px rgba(233, 69, 96, 0.3);
+        box-shadow: 0 4px 20px rgba(200, 64, 233, 0.3);
       }
 
       .download-btn:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 28px rgba(233, 69, 96, 0.45);
+        box-shadow: 0 6px 28px rgba(200, 64, 233, 0.45);
       }
 
       .download-btn svg {
@@ -220,11 +220,11 @@
         </p>
       </div>
       <div class="feature">
-        <div class="icon">🏷️</div>
-        <h3>Custom Names</h3>
+        <div class="icon">↕️</div>
+        <h3>Drag to Reorder</h3>
         <p>
-          Right-click any item to rename it. Useful when apps use cryptic
-          internal names for their menubar icons.
+          Drag items by their grip handle to rearrange the order. Apply your
+          changes and MenuDown physically moves the real menubar icons to match.
         </p>
       </div>
       <div class="feature">
