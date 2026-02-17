@@ -174,16 +174,19 @@ PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
 
 # Format release notes as HTML list items
 NOTES_HTML=""
-IFS=$'\n'
-# Split on commas or newlines for multi-item notes
-for note in $(echo "$NOTES" | tr ',' '\n' | sed 's/^ *//;s/ *$//'); do
+# Split on commas for multi-item notes
+while IFS= read -r note; do
+    note=$(echo "$note" | sed 's/^ *//;s/ *$//')
     if [[ -n "$note" ]]; then
-        NOTES_HTML="$NOTES_HTML          <li>$note</li>\n"
+        NOTES_HTML="${NOTES_HTML}          <li>${note}</li>
+"
     fi
-done
-unset IFS
+done < <(echo "$NOTES" | tr ',' '\n')
 
-NEW_ITEM="    <item>
+# Build the new appcast item as a temp file, then use python to insert it
+ITEM_FILE=$(mktemp)
+cat > "$ITEM_FILE" <<XMLEOF
+    <item>
       <title>Version $VERSION</title>
       <sparkle:version>$BUILD</sparkle:version>
       <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
@@ -191,22 +194,32 @@ NEW_ITEM="    <item>
       <description><![CDATA[
         <h2>What's New</h2>
         <ul>
-$(echo -e "$NOTES_HTML")        </ul>
+${NOTES_HTML}        </ul>
       ]]></description>
       <pubDate>$PUB_DATE</pubDate>
       <enclosure
-        url=\"https://github.com/Jmartinns/MenuDown/releases/download/v$VERSION/MenuDown.dmg\"
-        sparkle:edSignature=\"$ED_SIGNATURE\"
-        length=\"$LENGTH\"
-        type=\"application/octet-stream\"
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v$VERSION/MenuDown.dmg"
+        sparkle:edSignature="$ED_SIGNATURE"
+        length="$LENGTH"
+        type="application/octet-stream"
       />
-    </item>"
+    </item>
+XMLEOF
 
-# Insert new item after <language>en</language>
-ESCAPED_ITEM=$(echo "$NEW_ITEM" | sed 's/[&/\]/\\&/g')
-sed -i '' "/<language>en<\/language>/a\\
-$NEW_ITEM
-" "$APPCAST"
+# Insert new item after <language>en</language> using python (safe with XML/special chars)
+python3 -c "
+import sys
+marker = '<language>en</language>'
+with open('$APPCAST', 'r') as f:
+    content = f.read()
+with open(sys.argv[1], 'r') as f:
+    new_item = f.read()
+content = content.replace(marker, marker + '\n' + new_item, 1)
+with open('$APPCAST', 'w') as f:
+    f.write(content)
+" "$ITEM_FILE"
+
+rm -f "$ITEM_FILE"
 
 echo "  ✓ appcast.xml updated (signature: ${ED_SIGNATURE:0:20}...)"
 
