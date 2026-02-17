@@ -1,12 +1,12 @@
 import Cocoa
 import SwiftUI
 
-/// Manages the floating NSPanel that displays menu items vertically.
+/// Manages the floating panel that displays menu items vertically.
 /// Anchored below the MenuDown status item in the menubar.
 final class VerticalPanelController {
 
     private var panel: NSPanel?
-    private var hostingView: NSHostingView<VerticalPanelView>?
+    private var eventMonitor: Any?
 
     private let scanner: MenuBarScanner
     private let onItemClicked: (MenuBarItem) -> Void
@@ -45,16 +45,41 @@ final class VerticalPanelController {
             }
         )
 
-        let hosting = NSHostingView(rootView: contentView)
-        hosting.setFrameSize(hosting.fittingSize)
+        // Use NSHostingController which handles sizing correctly
+        let hostingController = NSHostingController(rootView: contentView)
+        // Force layout to get the correct size
+        hostingController.view.layoutSubtreeIfNeeded()
+        let contentSize = hostingController.view.fittingSize
 
+        // Create a borderless, non-activating panel
         let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
-            styleMask: [.nonactivatingPanel, .fullSizeContentView],
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.contentView = hosting
+
+        // Add visual effect background with rounded corners
+        let visualEffect = NSVisualEffectView(frame: NSRect(origin: .zero, size: contentSize))
+        visualEffect.material = .popover
+        visualEffect.state = .active
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = 10
+        visualEffect.layer?.masksToBounds = true
+        visualEffect.autoresizingMask = [.width, .height]
+
+        // Add the SwiftUI content on top of the visual effect
+        let hostingView = hostingController.view
+        hostingView.frame = NSRect(origin: .zero, size: contentSize)
+        hostingView.autoresizingMask = [.width, .height]
+
+        // Make the SwiftUI hosting view transparent
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = .clear
+
+        visualEffect.addSubview(hostingView)
+        panel.contentView = visualEffect
+
         panel.isFloatingPanel = true
         panel.level = .statusBar
         panel.isOpaque = false
@@ -63,23 +88,22 @@ final class VerticalPanelController {
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
 
-        // Determine position: below the status item button
-        if let buttonWindow = button.window {
-            let buttonFrame = buttonWindow.frame
-            let panelSize = hosting.fittingSize
+        // Round the window itself
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.cornerRadius = 10
+        panel.contentView?.layer?.masksToBounds = true
 
-            let origin = NSPoint(
-                x: buttonFrame.midX - panelSize.width / 2,
-                y: buttonFrame.minY - panelSize.height - 4
-            )
-            panel.setFrameOrigin(origin)
+        // Position below the status item button using screen coordinates
+        if let buttonWindow = button.window {
+            let buttonScreenFrame = buttonWindow.frame
+            let panelX = buttonScreenFrame.midX - contentSize.width / 2
+            let panelY = buttonScreenFrame.minY - contentSize.height - 4
+            panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
         }
 
         panel.orderFrontRegardless()
         self.panel = panel
-        self.hostingView = hosting
 
-        // Set up click-away dismissal
         setupClickAwayMonitor()
     }
 
@@ -87,8 +111,10 @@ final class VerticalPanelController {
     func dismiss() {
         panel?.orderOut(nil)
         panel = nil
-        hostingView = nil
-        removeClickAwayMonitor()
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
     }
 
     /// Toggle visibility.
@@ -102,15 +128,14 @@ final class VerticalPanelController {
 
     // MARK: - Click-away dismissal
 
-    private var clickAwayMonitor: Any?
-
     private func setupClickAwayMonitor() {
-        removeClickAwayMonitor()
-        clickAwayMonitor = NSEvent.addGlobalMonitorForEvents(
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] event in
+        ) { [weak self] _ in
             guard let self = self, let panel = self.panel else { return }
-            // If the click is outside the panel, dismiss it
             let clickLocation = NSEvent.mouseLocation
             if !panel.frame.contains(clickLocation) {
                 self.dismiss()
@@ -118,14 +143,9 @@ final class VerticalPanelController {
         }
     }
 
-    private func removeClickAwayMonitor() {
-        if let monitor = clickAwayMonitor {
-            NSEvent.removeMonitor(monitor)
-            clickAwayMonitor = nil
-        }
-    }
-
     deinit {
-        removeClickAwayMonitor()
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 }

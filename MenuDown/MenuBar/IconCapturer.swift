@@ -11,8 +11,8 @@ final class IconCapturer {
         guard !items.isEmpty else { return }
         guard let screen = NSScreen.main else { return }
 
-        // The menubar is at the top of the screen
-        let menuBarHeight: CGFloat = NSApplication.shared.mainMenu?.menuBarHeight ?? 24
+        // Use NSStatusBar.system.thickness for menu bar height to avoid touching NSApplication.mainMenu off the main thread
+        let menuBarHeight: CGFloat = NSStatusBar.system.thickness
 
         // Capture the entire menubar strip
         let captureRect = CGRect(
@@ -62,3 +62,4 @@ final class IconCapturer {
         captureIcons(for: [item])
     }
 }
+

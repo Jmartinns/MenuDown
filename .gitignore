@@ -1,0 +1,17 @@
+# Xcode build output
+build/
+DerivedData/
+
+# Xcode user-specific files
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+
+# XcodeGen can regenerate the project
+MenuDown.xcodeproj/
+
+# macOS system files
+.DS_Store
+
+# Debug logs
+/tmp/menudown_debug.log

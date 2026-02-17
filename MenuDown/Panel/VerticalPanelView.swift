@@ -21,14 +21,13 @@ struct VerticalPanelView: View {
             footerBar
         }
         .frame(width: 220)
-        .background(.ultraThinMaterial)
     }
 
     // MARK: - Subviews
 
     private var itemList: some View {
         ScrollView {
-            LazyVStack(spacing: 1) {
+            VStack(spacing: 1) {
                 ForEach(scanner.items) { item in
                     ItemRow(item: item) {
                         onItemClicked(item)
@@ -37,6 +36,7 @@ struct VerticalPanelView: View {
             }
             .padding(.vertical, 4)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxHeight: 400)
     }
 
@@ -175,17 +175,13 @@ struct ItemRow: View {
             Image(nsImage: icon)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+        } else if let appIcon = item.appIcon {
+            Image(nsImage: appIcon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         } else {
-            // Fallback: try to get the app icon
-            if let app = NSRunningApplication(processIdentifier: item.pid),
-               let appIcon = app.icon {
-                Image(nsImage: appIcon)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                Image(systemName: "app.fill")
-                    .foregroundStyle(.secondary)
-            }
+            Image(systemName: "app.fill")
+                .foregroundStyle(.secondary)
         }
     }
 }

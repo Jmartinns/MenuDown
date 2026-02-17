@@ -15,6 +15,10 @@ final class MenuBarItem: Identifiable, ObservableObject {
     @Published var capturedIcon: NSImage?
     @Published var isVisible: Bool = true
 
+    /// The app's icon, resolved eagerly at init time so the UI never
+    /// shows a placeholder while waiting for the screenshot-based capture.
+    let appIcon: NSImage?
+
     init(
         axElement: AXUIElement,
         pid: pid_t,
@@ -33,6 +37,7 @@ final class MenuBarItem: Identifiable, ObservableObject {
         self.size = size
         self.title = title
         self.id = "\(bundleID)_\(index)"
+        self.appIcon = NSRunningApplication(processIdentifier: pid)?.icon
     }
 
     /// Display name: prefer user override, then app name.
