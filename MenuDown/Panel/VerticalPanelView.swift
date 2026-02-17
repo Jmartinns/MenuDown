@@ -61,12 +61,11 @@ struct VerticalPanelView: View {
         ScrollView {
             VStack(spacing: 1) {
                 ForEach(orderedItems) { item in
-                    ItemRow(item: item) {
-                        onItemClicked(item)
-                    }
-                    .onDrag {
+                    ItemRow(item: item, onDrag: {
                         self.draggingItem = item
                         return NSItemProvider(object: item.id as NSString)
+                    }) {
+                        onItemClicked(item)
                     }
                     .onDrop(
                         of: [UTType.text],
@@ -177,6 +176,7 @@ struct VerticalPanelView: View {
 
 struct ItemRow: View {
     @ObservedObject var item: MenuBarItem
+    var onDrag: (() -> NSItemProvider)?
     let action: () -> Void
     @State private var isRenaming = false
     @State private var renameText = ""
@@ -186,6 +186,7 @@ struct ItemRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 DragGrip()
+                    .onDrag(onDrag ?? { NSItemProvider() })
 
                 iconView
                     .frame(width: 20, height: 20)

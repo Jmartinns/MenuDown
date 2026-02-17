@@ -142,6 +142,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AccessibilityHelper.shared.startPolling(interval: 2.0) { [weak self] in
             self?.debugLog("Accessibility permission detected via polling — starting scan.")
             self?.scanner.scanAsync()
+            // Re-register the global hotkey monitor now that we have
+            // accessibility — monitors registered before trust is
+            // granted silently receive no events.
+            self?.setupGlobalHotkey()
         }
     }
 
@@ -281,6 +285,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Global Hotkey (⌥M)
 
     private func setupGlobalHotkey() {
+        // Remove existing monitors before (re-)registering — this method
+        // may be called again after accessibility permission is granted.
+        if let monitor = globalHotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalHotkeyMonitor = nil
+        }
+        if let monitor = localHotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            localHotkeyMonitor = nil
+        }
+
         // Monitor key events when MenuDown is NOT the active app
         globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleHotkey(event)
@@ -298,10 +313,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @discardableResult
     private func handleHotkey(_ event: NSEvent) -> Bool {
         // ⌥M: keyCode 46 = 'm', check for Option modifier only
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard event.keyCode == 46,
-              event.modifierFlags.contains(.option),
-              !event.modifierFlags.contains(.command),
-              !event.modifierFlags.contains(.control) else {
+              flags.contains(.option),
+              !flags.contains(.command),
+              !flags.contains(.control) else {
             return false
         }
         DispatchQueue.main.async { [weak self] in
