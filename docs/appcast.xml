@@ -6,6 +6,27 @@
     <description>Most recent updates to MenuDown.</description>
     <language>en</language>
     <item>
+      <title>Version 0.3.2</title>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>Improvements</h2>
+        <ul>
+          <li>Welcome window now fits all content properly</li>
+          <li>Added "Getting Started…" to settings menu to re-open the welcome guide anytime</li>
+          <li>Added drag-to-reorder tip in the welcome guide</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 17 Feb 2026 18:30:00 -0500</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.3.2/MenuDown.dmg"
+        sparkle:edSignature="4ndMaVamYOqRMkJ/0Tc2ndSNUmCpSm/WASbHI/c2kyoh7LiCAkiokwFeGlyewjCNsSfEEKE9xoO3Rz8sRzV9BA=="
+        length="3439936"
+        type="application/octet-stream"
+      />
+    </item>
+    <item>
       <title>Version 0.3.1</title>
       <sparkle:version>5</sparkle:version>
       <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>

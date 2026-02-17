@@ -247,6 +247,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateItem.target = self
         menu.addItem(updateItem)
 
+        // Getting Started
+        let welcomeItem = NSMenuItem(title: "Getting Started…", action: #selector(openWelcome), keyEquivalent: "")
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
+
         // About
         let aboutItem = NSMenuItem(title: "About MenuDown", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.target = self
@@ -278,6 +283,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshNow() {
         scanner.scanAsync()
         captureIconsInBackground()
+    }
+
+    @objc private func openWelcome() {
+        showWelcomeWindow()
     }
 
     @objc private func showAbout() {
@@ -357,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let hostingController = NSHostingController(rootView: welcomeView)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 460),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
