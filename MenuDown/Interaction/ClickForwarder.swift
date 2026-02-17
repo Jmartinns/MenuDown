@@ -29,19 +29,31 @@ final class ClickForwarder {
 
         // Wait for the menubar to redraw with items visible
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            // Re-read the item's current position now that it's on-screen
-            let clickPosition = self.currentPosition(of: item.axElement) ?? item.position
-            let clickSize = self.currentSize(of: item.axElement) ?? item.size
+            // Try AXPress first — this bypasses screen coordinates entirely,
+            // so it works even when app menus overlap status items.
+            let axResult = AXUIElementPerformAction(item.axElement, kAXPressAction as CFString)
 
-            // Activate the target app — macOS requires it for menu tracking.
-            if let app = NSRunningApplication(processIdentifier: item.pid) {
-                app.activate(options: [])
+            if axResult == .success {
+                // AXPress worked — monitor for menu dismissal
+                self.monitorMenuDismissal { [weak self] in
+                    self?.spacerManager.hide()
+                    self?.scanner?.resume()
+                }
+                return
             }
 
-            // Use a synthetic mouse click at the item's actual screen position.
-            // This is more reliable than AXPress for menu tracking — it mimics
-            // what the user does when clicking the status item directly.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // AXPress failed — fall back to synthetic click.
+            // Activate MenuDown itself first. Since it's an LSUIElement app
+            // with no text menus, this clears any overflowing app menus from
+            // the menubar without any visual disruption — the status items
+            // are then fully exposed for the synthetic click.
+            NSApp.activate(ignoringOtherApps: true)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                // Re-read the item's current position now that it's on-screen
+                let clickPosition = self.currentPosition(of: item.axElement) ?? item.position
+                let clickSize = self.currentSize(of: item.axElement) ?? item.size
+
                 self.syntheticClick(at: clickPosition, size: clickSize)
 
                 // Re-hide and resume scanning only after menu dismissal

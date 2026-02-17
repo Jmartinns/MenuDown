@@ -6,6 +6,27 @@
     <description>Most recent updates to MenuDown.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.1</title>
+      <sparkle:version>8</sparkle:version>
+      <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>What's New</h2>
+        <ul>
+          <li>Click forwarding now works when app menus overlap status items</li>
+          <li>Removed Finder flash on click fallback</li>
+        </ul>
+      ]]></description>
+      <pubDate>Tue, 17 Feb 2026 23:27:39 +0000</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.4.1/MenuDown.dmg"
+        sparkle:edSignature="m1IFweyngJeb1tAz81zVQ6RLZL1IuMin3yqaSvxpJXZUoQZSyVvu/tT/KeyAILqflmQlI+Sesa4EUelhAMx9Dw=="
+        length="3462885"
+        type="application/octet-stream"
+      />
+    </item>
+
+    <item>
       <title>Version 0.4.0</title>
       <sparkle:version>7</sparkle:version>
       <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
