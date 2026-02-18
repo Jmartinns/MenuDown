@@ -1,0 +1,61 @@
+name: Bug Report
+description: Report something that isn't working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: MenuDown version
+      description: Check **Settings gear → About** or the DMG filename.
+      placeholder: "e.g. 0.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "e.g. macOS 15.3 Sequoia"
+    validations:
+      required: true
+
+  - type: input
+    id: mac-model
+    attributes:
+      label: Mac model
+      description: Especially whether you have a notch or not.
+      placeholder: "e.g. MacBook Pro 14\" (M3 Pro, 2023)"
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly. What did you expect vs. what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Open MenuDown
+        2. Click on the Karabiner item
+        3. The menu opens then immediately closes
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log (optional)
+      description: |
+        If relevant, paste the contents of `/tmp/menudown_debug.log`.
+        You can copy it with: `cat /tmp/menudown_debug.log | pbcopy`
+      render: text
