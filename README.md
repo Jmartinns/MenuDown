@@ -31,7 +31,7 @@
 
 ## The Problem
 
-MacBook Pro models with a notch cut into the menubar. When you run enough apps, their menubar items get hidden behind the notch — invisible and unreachable.
+MacBook models with a notch cut into the menubar. When you run enough apps, their menubar items get hidden behind the notch — invisible and unreachable.
 
 ## The Solution
 
