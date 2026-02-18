@@ -36,13 +36,13 @@ Thanks for your interest in contributing to MenuDown! This document covers the b
 
 ## Architecture Overview
 
-| Directory | Purpose |
-|-----------|---------|
-| `App/` | App delegate, lifecycle, settings menu |
-| `MenuBar/` | Scanner, spacer, icon capture |
-| `Panel/` | SwiftUI panel view and NSPanel controller |
+| Directory      | Purpose                                        |
+| -------------- | ---------------------------------------------- |
+| `App/`         | App delegate, lifecycle, settings menu         |
+| `MenuBar/`     | Scanner, spacer, icon capture                  |
+| `Panel/`       | SwiftUI panel view and NSPanel controller      |
 | `Interaction/` | Click forwarding, reordering, change detection |
-| `Utilities/` | Preferences, accessibility helpers |
+| `Utilities/`   | Preferences, accessibility helpers             |
 
 ## Reporting Issues
 
