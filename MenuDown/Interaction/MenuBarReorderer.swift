@@ -133,10 +133,8 @@ final class MenuBarReorderer {
             debugLog("Reorder complete.")
 
             DispatchQueue.main.async { [weak self] in
-                // Re-hide items and resume scanning
-                if Preferences.shared.isSpacerEnabled {
-                    self?.spacerManager.hide()
-                }
+                // Keep originals visible and resume scanning.
+                self?.spacerManager.reveal()
                 self?.scanner?.resume()
                 self?.scanner?.scanAsync()
             }

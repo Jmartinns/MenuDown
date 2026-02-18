@@ -103,7 +103,7 @@ final class ClickForwarder {
     /// Restore scanner, spacer, and AH polling after the menu closes.
     private func restoreAfterMenuDismissal() {
         clickLog("Menu dismissed — restoring scanner + spacer.")
-        spacerManager.hide()
+        spacerManager.reveal()
         scanner?.resume()
         scanner?.startScanning(interval: Preferences.shared.refreshInterval)
         AccessibilityHelper.shared.resumePolling()

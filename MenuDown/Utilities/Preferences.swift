@@ -9,18 +9,12 @@ final class Preferences: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private enum Keys {
-        static let isSpacerEnabled = "isSpacerEnabled"
         static let refreshInterval = "refreshInterval"
         static let launchAtLogin = "launchAtLogin"
         static let excludedBundleIDs = "excludedBundleIDs"
         static let customNames = "customNames"
         static let hasLaunchedBefore = "hasLaunchedBefore"
         static let itemOrder = "itemOrder"
-    }
-
-    /// Whether the spacer that hides third-party items is active.
-    @Published var isSpacerEnabled: Bool {
-        didSet { defaults.set(isSpacerEnabled, forKey: Keys.isSpacerEnabled) }
     }
 
     /// How frequently (seconds) to refresh the item list.
@@ -60,7 +54,6 @@ final class Preferences: ObservableObject {
     }
 
     private init() {
-        self.isSpacerEnabled = defaults.object(forKey: Keys.isSpacerEnabled) as? Bool ?? true
         self.refreshInterval = defaults.object(forKey: Keys.refreshInterval) as? TimeInterval ?? 5.0
         self.launchAtLogin = defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? false
 

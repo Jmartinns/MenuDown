@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// A one-time welcome window shown on first launch, explaining how to
 /// access MenuDown and reposition the menubar icon.
@@ -7,9 +8,11 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.blue)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
             Text("Welcome to MenuDown!")
                 .font(.title2)
@@ -18,8 +21,8 @@ struct WelcomeView: View {
             VStack(alignment: .leading, spacing: 12) {
                 tipRow(
                     icon: "keyboard",
-                    title: "Open with \u{2325}M (Option + M)",
-                    description: "Press this shortcut anytime to toggle the MenuDown panel."
+                    title: "Open with ⌃⌥⌘M",
+                    description: "Press Control + Option + Command + M anytime to toggle the MenuDown panel."
                 )
 
                 tipRow(

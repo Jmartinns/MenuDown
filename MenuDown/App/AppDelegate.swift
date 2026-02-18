@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 import os.log
 import Sparkle
+import Carbon
 
 private let appLogger = Logger(subsystem: "com.menudown.app", category: "app")
 
@@ -20,8 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var changeMonitor: ChangeMonitor?
     private var panelController: VerticalPanelController?
     private var cancellables = Set<AnyCancellable>()
-    private var globalHotkeyMonitor: Any?
-    private var localHotkeyMonitor: Any?
+    private var globalHotKeyRef: EventHotKeyRef?
+    private var hotKeyHandlerRef: EventHandlerRef?
     private var welcomeWindow: NSWindow?
     private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
@@ -75,12 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         spacerManager.reveal() // Ensure items are visible when we quit
         spacerManager.uninstall()
         changeMonitor?.stopMonitoring()
-        if let monitor = globalHotkeyMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
-        if let monitor = localHotkeyMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
+        unregisterGlobalHotkey()
     }
 
     // MARK: - Status Item
@@ -144,9 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AccessibilityHelper.shared.startPolling(interval: 2.0) { [weak self] in
             self?.debugLog("Accessibility permission detected via polling — starting scan.")
             self?.scanner.scanAsync()
-            // Re-register the global hotkey monitor now that we have
-            // accessibility — monitors registered before trust is
-            // granted silently receive no events.
+            // Re-register the global hotkey after trust changes.
             self?.setupGlobalHotkey()
         }
     }
@@ -164,14 +158,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Capture icons once after initial scan completes
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             self?.captureIconsInBackground()
-        }
-
-        // If spacer is enabled in prefs, hide items
-        if Preferences.shared.isSpacerEnabled {
-            // Delay slightly to let the scanner do a first pass
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                self?.spacerManager.hide()
-            }
         }
     }
 
@@ -192,6 +178,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Capture icons on a background queue without blocking the UI.
     private func captureIconsInBackground() {
         guard AccessibilityHelper.isScreenRecordingEnabled else { return }
+        // Avoid reveal/re-hide flashes while hidden; capture can happen when shown.
+        guard !spacerManager.isHiding else { return }
         let items = scanner.items
         guard !items.isEmpty else { return }
 
@@ -201,15 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            if self.spacerManager.isHiding {
-                DispatchQueue.main.async {
-                    self.spacerManager.brieflyReveal(duration: 0.08) {
-                        self.iconCapturer.captureIcons(for: needsCapture)
-                    }
-                }
-            } else {
-                self.iconCapturer.captureIcons(for: needsCapture)
-            }
+            self.iconCapturer.captureIcons(for: needsCapture)
         }
     }
 
@@ -226,14 +206,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettings() {
         let menu = NSMenu()
-
-        // Toggle spacer
-        let spacerTitle = spacerManager.isHiding ? "Show Original Items" : "Hide Original Items"
-        let spacerMenuItem = NSMenuItem(title: spacerTitle, action: #selector(toggleSpacer), keyEquivalent: "")
-        spacerMenuItem.target = self
-        menu.addItem(spacerMenuItem)
-
-        menu.addItem(.separator())
 
         // Refresh
         let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
@@ -270,16 +242,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func toggleSpacer() {
-        if spacerManager.isHiding {
-            spacerManager.reveal()
-            Preferences.shared.isSpacerEnabled = false
-        } else {
-            spacerManager.hide()
-            Preferences.shared.isSpacerEnabled = true
-        }
-    }
-
     @objc private func refreshNow() {
         scanner.scanAsync()
         captureIconsInBackground()
@@ -302,49 +264,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    // MARK: - Global Hotkey (⌥M)
+    // MARK: - Global Hotkey (⌃⌥⌘M)
 
     private func setupGlobalHotkey() {
-        // Remove existing monitors before (re-)registering — this method
-        // may be called again after accessibility permission is granted.
-        if let monitor = globalHotkeyMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalHotkeyMonitor = nil
-        }
-        if let monitor = localHotkeyMonitor {
-            NSEvent.removeMonitor(monitor)
-            localHotkeyMonitor = nil
+        unregisterGlobalHotkey()
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let userData = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+
+        let installStatus = InstallEventHandler(
+            GetEventDispatcherTarget(),
+            { _, eventRef, userData in
+                guard let userData, let eventRef else { return noErr }
+                let app = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+
+                var hotKeyID = EventHotKeyID()
+                let status = GetEventParameter(
+                    eventRef,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard status == noErr,
+                      hotKeyID.signature == AppDelegate.hotKeySignature,
+                      hotKeyID.id == AppDelegate.hotKeyID else {
+                    return noErr
+                }
+
+                DispatchQueue.main.async {
+                    app.togglePanelViaHotkey()
+                }
+                return noErr
+            },
+            1,
+            &eventType,
+            userData,
+            &hotKeyHandlerRef
+        )
+
+        guard installStatus == noErr else {
+            appLogger.error("Failed to install global hotkey handler: \(installStatus)")
+            return
         }
 
-        // Monitor key events when MenuDown is NOT the active app
-        globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleHotkey(event)
-        }
-        // Monitor key events when MenuDown IS the active app
-        localHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if self?.handleHotkey(event) == true {
-                return nil // Consume the event
-            }
-            return event
+        var hotKeyID = EventHotKeyID(
+            signature: AppDelegate.hotKeySignature,
+            id: AppDelegate.hotKeyID
+        )
+        let modifiers = UInt32(controlKey | optionKey | cmdKey)
+        let registerStatus = RegisterEventHotKey(
+            UInt32(kVK_ANSI_M),
+            modifiers,
+            hotKeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &globalHotKeyRef
+        )
+
+        if registerStatus != noErr {
+            appLogger.error("Failed to register global hotkey: \(registerStatus)")
+            unregisterGlobalHotkey()
         }
     }
 
-    /// Returns true if the event was the ⌥M hotkey and was handled.
-    @discardableResult
-    private func handleHotkey(_ event: NSEvent) -> Bool {
-        // ⌥M: keyCode 46 = 'm', check for Option modifier only
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard event.keyCode == 46,
-              flags.contains(.option),
-              !flags.contains(.command),
-              !flags.contains(.control) else {
-            return false
+    private func unregisterGlobalHotkey() {
+        if let hotKey = globalHotKeyRef {
+            UnregisterEventHotKey(hotKey)
+            globalHotKeyRef = nil
         }
-        DispatchQueue.main.async { [weak self] in
-            self?.togglePanelViaHotkey()
+        if let handler = hotKeyHandlerRef {
+            RemoveEventHandler(handler)
+            hotKeyHandlerRef = nil
         }
-        return true
     }
+
+    private static let hotKeySignature: OSType = 0x4D4E4457 // "MNDW"
+    private static let hotKeyID: UInt32 = 1
 
     private func togglePanelViaHotkey() {
         guard let button = statusItem.button else { return }
@@ -352,7 +353,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if panelController?.isVisible == true {
             scanner.scanAsync()
-            captureIconsInBackground()
         }
     }
 
