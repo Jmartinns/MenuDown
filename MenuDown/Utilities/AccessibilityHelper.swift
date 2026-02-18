@@ -12,6 +12,7 @@ final class AccessibilityHelper: ObservableObject {
     @Published private(set) var isScreenRecordingGranted: Bool = false
 
     private var pollTimer: Timer?
+    private var isPollingPaused = false
 
     private init() {
         refresh()
@@ -27,14 +28,26 @@ final class AccessibilityHelper: ObservableObject {
     /// Calls `onChange` when accessibility becomes granted.
     func startPolling(interval: TimeInterval = 2.0, onChange: @escaping () -> Void) {
         stopPolling()
+        isPollingPaused = false
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
+            guard let self = self, !self.isPollingPaused else { return }
             let wasGranted = self.isAccessibilityGranted
             self.refresh()
             if !wasGranted && self.isAccessibilityGranted {
                 onChange()
             }
         }
+    }
+
+    /// Temporarily pause polling (e.g. while a forwarded menu is open).
+    /// The timer remains active but skips its work.
+    func pausePolling() {
+        isPollingPaused = true
+    }
+
+    /// Resume polling after a pause.
+    func resumePolling() {
+        isPollingPaused = false
     }
 
     /// Stop polling.

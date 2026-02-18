@@ -6,6 +6,26 @@
     <description>Most recent updates to MenuDown.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.2</title>
+      <sparkle:version>9</sparkle:version>
+      <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>What's New</h2>
+        <ul>
+          <li>Fixed menus collapsing after ~1 second when clicking status items through MenuDown. Rewrote click forwarding to use synthetic clicks with proper cursor warping for reliable menu tracking. Added generation-based invalidation to prevent stale dismissal monitors from interfering with new clicks.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Wed, 18 Feb 2026 00:08:46 +0000</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.4.2/MenuDown.dmg"
+        sparkle:edSignature="yvYHHjKZBeGhQVIHkmcAo47aP0Xvg1N2h3T9cImnppeLxTeFPP1vXzN8R15MziaYUpSspBFZjVtmTztqmU0gAw=="
+        length="3468092"
+        type="application/octet-stream"
+      />
+    </item>
+
+    <item>
       <title>Version 0.4.1</title>
       <sparkle:version>8</sparkle:version>
       <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>

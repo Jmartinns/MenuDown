@@ -221,8 +221,11 @@ final class MenuBarScanner: ObservableObject {
             let pid = app.processIdentifier
 
             group.enter()
-            concurrentQueue.async {
+            concurrentQueue.async { [weak self] in
                 defer { group.leave() }
+
+                // Abort early if scanning was paused while we're mid-flight
+                guard self?.isPaused != true else { return }
 
                 let appElement = AXUIElementCreateApplication(pid)
                 AXUIElementSetMessagingTimeout(appElement, 0.3) // 300ms max

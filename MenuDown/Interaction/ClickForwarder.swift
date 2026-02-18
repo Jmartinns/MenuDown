@@ -1,6 +1,18 @@
 import Cocoa
 import ApplicationServices
 
+private func clickLog(_ message: String) {
+    let line = "[\(Date())] [Click] \(message)\n"
+    let path = "/tmp/menudown_debug.log"
+    if let handle = FileHandle(forWritingAtPath: path) {
+        handle.seekToEndOfFile()
+        handle.write(line.data(using: .utf8)!)
+        handle.closeFile()
+    } else {
+        try? line.write(toFile: path, atomically: true, encoding: .utf8)
+    }
+}
+
 /// Forwards user clicks from the vertical panel to the original menubar items
 /// via the Accessibility API.
 final class ClickForwarder {
@@ -8,165 +20,243 @@ final class ClickForwarder {
     private let spacerManager: SpacerManager
     private weak var scanner: MenuBarScanner?
 
+    /// Monotonically increasing generation counter. Every call to `click()`
+    /// increments this. All delayed closures capture the generation at the
+    /// time they were created and bail out if it no longer matches, which
+    /// prevents stale closures from a prior click from interfering.
+    private var clickGeneration: UInt64 = 0
+
+    // Dismissal monitors — stored as instance vars so we can tear them
+    // down explicitly when a new click starts.
+    private var dismissalKeyMonitor: Any?
+    private var dismissalClickMonitor: Any?
+    private var activationObserver: Any?
+
     init(spacerManager: SpacerManager, scanner: MenuBarScanner) {
         self.spacerManager = spacerManager
         self.scanner = scanner
     }
 
+    // MARK: - Public API
+
     /// Simulate a click on the given menubar item.
-    /// Reveals hidden items, pauses scanning, performs the click, then waits for
-    /// menu dismissal to re-hide and resume scanning.
+    /// Stops scanning, reveals hidden items, performs a synthetic click at the
+    /// item's position, then waits for menu dismissal to restore scanning.
     func click(_ item: MenuBarItem) {
         // Don't forward clicks to MenuDown's own status item
         guard !item.isSelf else { return }
 
-        // Pause scanning — AX queries from the scanner can interrupt
-        // another app's menu tracking and cause the menu to close.
-        scanner?.pause()
+        // ── 0. Invalidate any previous click ──────────────────────────
+        // Cancel stale dismissal monitors from a prior click so they
+        // can't fire during this new click's activation sequence.
+        cancelDismissalMonitors()
+        clickGeneration &+= 1
+        let gen = clickGeneration
 
-        // Reveal the original items so the menu and its target are on-screen
+        clickLog("=== Click forwarding: \(item.appName) (pid \(item.pid)) gen=\(gen) ===")
+
+        // ── 1. Silence all periodic AX / screenshot work ─────────────
+        scanner?.stopScanning()
+        scanner?.pause()
+        AccessibilityHelper.shared.pausePolling()
+        clickLog("Scanner stopped + paused, AH polling paused.")
+
+        // ── 2. Reveal original status items ──────────────────────────
         spacerManager.reveal()
 
-        // Wait for the menubar to redraw with items visible
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            // Try AXPress first — this bypasses screen coordinates entirely,
-            // so it works even when app menus overlap status items.
-            let axResult = AXUIElementPerformAction(item.axElement, kAXPressAction as CFString)
-
-            if axResult == .success {
-                // AXPress worked — monitor for menu dismissal
-                self.monitorMenuDismissal { [weak self] in
-                    self?.spacerManager.hide()
-                    self?.scanner?.resume()
-                }
-                return
-            }
-
-            // AXPress failed — fall back to synthetic click.
-            // Activate MenuDown itself first. Since it's an LSUIElement app
-            // with no text menus, this clears any overflowing app menus from
-            // the menubar without any visual disruption — the status items
-            // are then fully exposed for the synthetic click.
+        // ── 3. After menubar redraws + any in-flight scan finishes ───
+        //       (~0.5 s is enough: scans take ≤ 0.37 s)
+        after(0.5, gen: gen) {
+            // ── 4. Clear overlapping app menus ───────────────────────
+            //       MenuDown is an LSUIElement — activating it has zero
+            //       visible effect except removing text-menu overflow.
             NSApp.activate(ignoringOtherApps: true)
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                // Re-read the item's current position now that it's on-screen
-                let clickPosition = self.currentPosition(of: item.axElement) ?? item.position
-                let clickSize = self.currentSize(of: item.axElement) ?? item.size
+            self.after(0.15, gen: gen) {
+                // ── 5. Read current on-screen geometry ───────────────
+                let pos  = self.currentPosition(of: item.axElement) ?? item.position
+                let size = self.currentSize(of: item.axElement) ?? item.size
 
-                self.syntheticClick(at: clickPosition, size: clickSize)
+                // ── 6. Warp cursor + synthetic click ─────────────────
+                //       A real mouseDown at the status-item position
+                //       makes macOS start a proper menu-tracking loop.
+                //       AXPress doesn't do this, which is why it lets
+                //       menus auto-dismiss.
+                self.warpCursor(to: pos, size: size)
+                self.syntheticClick(at: pos, size: size)
+                clickLog("Synthetic click sent.")
 
-                // Re-hide and resume scanning only after menu dismissal
-                self.monitorMenuDismissal { [weak self] in
-                    self?.spacerManager.hide()
-                    self?.scanner?.resume()
-                }
+                // ── 7. Install dismissal monitors after a delay ──────
+                //       Give menu tracking ~1.5 s to stabilise before
+                //       we start listening for dismissal signals.
+                self.installDismissalMonitors(
+                    targetPID: item.pid,
+                    generation: gen,
+                    delay: 1.5
+                )
             }
         }
     }
 
-    /// Get the current on-screen position of an AX element.
+    // MARK: - Restoration
+
+    /// Restore scanner, spacer, and AH polling after the menu closes.
+    private func restoreAfterMenuDismissal() {
+        clickLog("Menu dismissed — restoring scanner + spacer.")
+        spacerManager.hide()
+        scanner?.resume()
+        scanner?.startScanning(interval: Preferences.shared.refreshInterval)
+        AccessibilityHelper.shared.resumePolling()
+    }
+
+    // MARK: - Generation-safe delayed dispatch
+
+    /// Execute `body` on the main queue after `seconds`, but only if the
+    /// current click generation still matches `gen`.
+    private func after(_ seconds: Double, gen: UInt64, _ body: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self = self, self.clickGeneration == gen else {
+                clickLog("Stale closure skipped (gen mismatch).")
+                return
+            }
+            body()
+        }
+    }
+
+    // MARK: - Cursor & Click helpers
+
+    /// Warp the visible cursor to a menubar item's centre.
+    private func warpCursor(to position: CGPoint, size: CGSize) {
+        let center = CGPoint(
+            x: position.x + size.width / 2,
+            y: position.y + size.height / 2
+        )
+        CGWarpMouseCursorPosition(center)
+        // Post a mouseMoved so the window server updates tracking areas.
+        let move = CGEvent(mouseEventSource: nil,
+                           mouseType: .mouseMoved,
+                           mouseCursorPosition: center,
+                           mouseButton: .left)
+        move?.post(tap: .cghidEventTap)
+        clickLog("Warped cursor to (\(Int(center.x)), \(Int(center.y)))")
+    }
+
+    /// Synthesize a mouse click at the centre of the given rect.
+    private func syntheticClick(at position: CGPoint, size: CGSize) {
+        let pt = CGPoint(
+            x: position.x + size.width / 2,
+            y: position.y + size.height / 2
+        )
+        let down = CGEvent(mouseEventSource: nil,
+                           mouseType: .leftMouseDown,
+                           mouseCursorPosition: pt,
+                           mouseButton: .left)
+        let up   = CGEvent(mouseEventSource: nil,
+                           mouseType: .leftMouseUp,
+                           mouseCursorPosition: pt,
+                           mouseButton: .left)
+        down?.post(tap: .cghidEventTap)
+        usleep(50_000) // 50 ms
+        up?.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - AX helpers
+
     private func currentPosition(of element: AXUIElement) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &value) == .success,
               let axValue = value else { return nil }
-        var point = CGPoint.zero
-        AXValueGetValue(axValue as! AXValue, .cgPoint, &point)
-        return point
+        var pt = CGPoint.zero
+        AXValueGetValue(axValue as! AXValue, .cgPoint, &pt)
+        return pt
     }
 
-    /// Get the current size of an AX element.
     private func currentSize(of element: AXUIElement) -> CGSize? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &value) == .success,
               let axValue = value else { return nil }
-        var size = CGSize.zero
-        AXValueGetValue(axValue as! AXValue, .cgSize, &size)
-        return size
+        var sz = CGSize.zero
+        AXValueGetValue(axValue as! AXValue, .cgSize, &sz)
+        return sz
     }
 
-    /// Synthesize a mouse click event at the given menubar item position.
-    private func syntheticClick(at position: CGPoint, size: CGSize) {
-        let clickPoint = CGPoint(
-            x: position.x + size.width / 2,
-            y: position.y + size.height / 2
-        )
+    // MARK: - Dismissal monitoring
 
-        let mouseDown = CGEvent(
-            mouseEventSource: nil,
-            mouseType: .leftMouseDown,
-            mouseCursorPosition: clickPoint,
-            mouseButton: .left
-        )
-        let mouseUp = CGEvent(
-            mouseEventSource: nil,
-            mouseType: .leftMouseUp,
-            mouseCursorPosition: clickPoint,
-            mouseButton: .left
-        )
-
-        mouseDown?.post(tap: .cghidEventTap)
-        usleep(50_000) // 50ms
-        mouseUp?.post(tap: .cghidEventTap)
-    }
-
-    /// Monitor for menu dismissal so we can re-hide the spacer and resume scanning.
-    /// Polls for the menu closing rather than using event monitors that can
-    /// interfere with menu tracking.
-    private func monitorMenuDismissal(completion: @escaping () -> Void) {
-        var didFire = false
-
-        let cleanup: () -> Void = {
-            guard !didFire else { return }
-            didFire = true
-            completion()
+    /// Forcibly tear down any existing dismissal monitors.
+    /// Called at the start of every `click()` so stale observers from a
+    /// prior click can never fire during the new click's sequence.
+    private func cancelDismissalMonitors() {
+        if let m = dismissalKeyMonitor   { NSEvent.removeMonitor(m); dismissalKeyMonitor = nil }
+        if let m = dismissalClickMonitor { NSEvent.removeMonitor(m); dismissalClickMonitor = nil }
+        if let o = activationObserver    {
+            NSWorkspace.shared.notificationCenter.removeObserver(o)
+            activationObserver = nil
         }
+    }
 
-        // Poll every 0.5s: check if any app still has an open menu.
-        // This avoids global event monitors that can interfere with menus.
-        var pollCount = 0
-        let maxPolls = 120 // 60 seconds max
+    /// Install dismissal monitors after `delay` seconds.
+    /// All monitors capture `generation` and are ignored if it no longer
+    /// matches, preventing double-fire if the user clicks another item
+    /// before the delay expires.
+    private func installDismissalMonitors(targetPID: pid_t, generation gen: UInt64, delay: Double) {
 
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
-            pollCount += 1
+        after(delay, gen: gen) { [weak self] in
+            guard let self = self else { return }
 
-            // Check if any menubar-related menu is currently open
-            // by looking at the frontmost app's AX focused element
-            let hasOpenMenu = self.isAnyMenuOpen()
-
-            if !hasOpenMenu || pollCount >= maxPolls {
-                timer.invalidate()
-                // Small delay to let the menu close animation finish
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    cleanup()
+            // 1) App-activation change — another app became frontmost
+            self.activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let self = self, self.clickGeneration == gen else { return }
+                if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                   app.processIdentifier != targetPID {
+                    clickLog("Dismissal: different app activated (\(app.localizedName ?? "?"))")
+                    self.finishDismissal(generation: gen)
                 }
+            }
+
+            // 2) Key press (Escape / Return / etc.)
+            self.dismissalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) {
+                [weak self] _ in
+                guard let self = self, self.clickGeneration == gen else { return }
+                clickLog("Dismissal: keyDown")
+                self.finishDismissal(generation: gen)
+            }
+
+            // 3) Mouse click outside the menu
+            self.dismissalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]
+            ) { [weak self] _ in
+                guard let self = self, self.clickGeneration == gen else { return }
+                clickLog("Dismissal: mouse click")
+                self.finishDismissal(generation: gen)
+            }
+
+            clickLog("Dismissal monitors installed (gen=\(gen)).")
+
+            // Safety timeout: 60 seconds
+            self.after(60.0, gen: gen) {
+                clickLog("Dismissal: safety timeout.")
+                self.finishDismissal(generation: gen)
             }
         }
     }
 
-    /// Check if any status item menu appears to be currently open.
-    private func isAnyMenuOpen() -> Bool {
-        // Look for windows that look like menus (borderless, small, at top of screen)
-        // by checking the window list for menu-type windows.
-        guard let windowList = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[CFString: Any]] else {
-            return false
+    /// Cleanup + restore, guarded by generation to prevent double-fire.
+    private func finishDismissal(generation gen: UInt64) {
+        guard clickGeneration == gen else {
+            clickLog("finishDismissal skipped (gen mismatch: current=\(clickGeneration), got=\(gen)).")
+            return
         }
+        // Bump generation so no other delayed closure can fire.
+        clickGeneration &+= 1
+        cancelDismissalMonitors()
 
-        for window in windowList {
-            let layer = window[kCGWindowLayer] as? Int ?? 0
-            // NSMenu windows are on layer 101 (kCGPopUpMenuWindowLevel)
-            // and status item menus on similar high levels
-            if layer >= 101 {
-                let name = window[kCGWindowName as CFString] as? String ?? ""
-                // Skip known non-menu windows
-                if name.isEmpty || name == "Notification Center" {
-                    return true
-                }
-            }
+        // Short delay so macOS finishes any menu-item action animation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.restoreAfterMenuDismissal()
         }
-        return false
     }
 }
