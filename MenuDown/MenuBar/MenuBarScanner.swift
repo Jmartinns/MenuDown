@@ -166,10 +166,11 @@ final class MenuBarScanner: ObservableObject {
         thirdPartyItems.sort { $0.position.x < $1.position.x }
 
         // Inject MenuDown's own item — AX can't discover our own extras
+        let selfBundleID = Bundle.main.bundleIdentifier ?? "com.menudown.app"
+        thirdPartyItems.removeAll { $0.bundleID == selfBundleID }
         if let selfItem = selfStatusItem,
            let button = selfItem.button,
            let buttonWindow = button.window {
-            let bundleID = Bundle.main.bundleIdentifier ?? "com.menudown.app"
             let frame = buttonWindow.frame
             // Convert from bottom-left (AppKit) to top-left (AX/CG) coordinates
             let screenHeight = NSScreen.main?.frame.height ?? 0
@@ -178,7 +179,7 @@ final class MenuBarScanner: ObservableObject {
             let selfMenuItem = MenuBarItem(
                 axElement: selfElement,
                 pid: ProcessInfo.processInfo.processIdentifier,
-                bundleID: bundleID,
+                bundleID: selfBundleID,
                 appName: "MenuDown",
                 position: CGPoint(x: frame.origin.x, y: axY),
                 size: CGSize(width: frame.width, height: frame.height),
@@ -188,6 +189,11 @@ final class MenuBarScanner: ObservableObject {
             thirdPartyItems.append(selfMenuItem)
             thirdPartyItems.sort { $0.position.x < $1.position.x }
         }
+
+        let snapshot = thirdPartyItems
+            .map { "\($0.bundleID)@x=\(Int($0.position.x)) w=\(Int($0.size.width)) title=\($0.title ?? "-")" }
+            .joined(separator: " | ")
+        debugLog("Item snapshot: \(snapshot)")
 
         return thirdPartyItems
     }

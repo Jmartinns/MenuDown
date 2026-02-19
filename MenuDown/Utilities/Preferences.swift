@@ -1,6 +1,12 @@
 import Foundation
 import Combine
 
+enum InteractionFallbackMode: String, CaseIterable {
+    case ask
+    case alwaysUseSafeSwap
+    case neverUseSafeSwap
+}
+
 /// Persisted user preferences for MenuDown.
 final class Preferences: ObservableObject {
 
@@ -15,6 +21,7 @@ final class Preferences: ObservableObject {
         static let customNames = "customNames"
         static let hasLaunchedBefore = "hasLaunchedBefore"
         static let itemOrder = "itemOrder"
+        static let interactionFallbackMode = "interactionFallbackMode"
     }
 
     /// How frequently (seconds) to refresh the item list.
@@ -30,6 +37,11 @@ final class Preferences: ObservableObject {
     /// Bundle IDs the user has chosen to exclude from the vertical panel.
     @Published var excludedBundleIDs: Set<String> {
         didSet { defaults.set(Array(excludedBundleIDs), forKey: Keys.excludedBundleIDs) }
+    }
+
+    /// Policy for handling blocked menubar interactions.
+    @Published var interactionFallbackMode: InteractionFallbackMode {
+        didSet { defaults.set(interactionFallbackMode.rawValue, forKey: Keys.interactionFallbackMode) }
     }
 
     /// User-defined custom display names, keyed by bundle ID.
@@ -59,6 +71,9 @@ final class Preferences: ObservableObject {
 
         let excludedArray = defaults.object(forKey: Keys.excludedBundleIDs) as? [String] ?? []
         self.excludedBundleIDs = Set(excludedArray)
+        self.interactionFallbackMode = InteractionFallbackMode(
+            rawValue: defaults.string(forKey: Keys.interactionFallbackMode) ?? ""
+        ) ?? .ask
 
         self.customNames = defaults.object(forKey: Keys.customNames) as? [String: String] ?? [:]
     }

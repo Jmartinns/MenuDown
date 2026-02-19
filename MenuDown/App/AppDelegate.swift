@@ -7,23 +7,25 @@ import Carbon
 
 private let appLogger = Logger(subsystem: "com.menudown.app", category: "app")
 
-/// The main application delegate. Sets up the status item, scanner, spacer,
+/// The main application delegate. Sets up the status item, scanner,
 /// and vertical panel — the core of MenuDown.
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Components
     private var statusItem: NSStatusItem!
     private let scanner = MenuBarScanner()
-    private let spacerManager = SpacerManager()
     private let iconCapturer = IconCapturer()
-    private lazy var clickForwarder = ClickForwarder(spacerManager: spacerManager, scanner: scanner)
-    private lazy var reorderer = MenuBarReorderer(spacerManager: spacerManager, scanner: scanner)
+    private lazy var clickForwarder = ClickForwarder(scanner: scanner)
+    private lazy var reorderer = MenuBarReorderer(scanner: scanner)
     private var changeMonitor: ChangeMonitor?
     private var panelController: VerticalPanelController?
     private var cancellables = Set<AnyCancellable>()
     private var globalHotKeyRef: EventHotKeyRef?
     private var hotKeyHandlerRef: EventHandlerRef?
     private var welcomeWindow: NSWindow?
+    private var noticePopover: NSPopover?
+    private var noticeDismissWorkItem: DispatchWorkItem?
+    private var lastNoticeAt: Date?
     private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     // MARK: - Lifecycle
@@ -73,8 +75,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         scanner.stopScanning()
-        spacerManager.reveal() // Ensure items are visible when we quit
-        spacerManager.uninstall()
         changeMonitor?.stopMonitoring()
         unregisterGlobalHotkey()
     }
@@ -121,9 +121,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showSettings()
             },
             onReorderApplied: { [weak self] items in
+                self?.clickForwarder.cancelActiveForwarding()
                 self?.reorderer.applyOrder(items)
             }
         )
+        reorderer.onBoundaryBlocked = { [weak self] message in
+            self?.showTransientNotice(message)
+        }
     }
 
     // MARK: - Permissions
@@ -148,9 +152,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Scanning
 
     private func startScanning() {
-        // Install the spacer
-        spacerManager.install()
-
         // Start periodic scanning (now runs on background queue)
         let interval = Preferences.shared.refreshInterval
         scanner.startScanning(interval: interval)
@@ -164,22 +165,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureIconsIfNeeded() {
         guard AccessibilityHelper.isScreenRecordingEnabled else { return }
         let items = scanner.items
-
-        if spacerManager.isHiding {
-            // Items are off-screen — briefly reveal to capture
-            spacerManager.brieflyReveal(duration: 0.1) { [weak self] in
-                self?.iconCapturer.captureIcons(for: items)
-            }
-        } else {
-            iconCapturer.captureIcons(for: items)
-        }
+        iconCapturer.captureIcons(for: items)
     }
 
     /// Capture icons on a background queue without blocking the UI.
     private func captureIconsInBackground() {
         guard AccessibilityHelper.isScreenRecordingEnabled else { return }
-        // Avoid reveal/re-hide flashes while hidden; capture can happen when shown.
-        guard !spacerManager.isHiding else { return }
         let items = scanner.items
         guard !items.isEmpty else { return }
 
@@ -212,6 +203,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshItem.target = self
         menu.addItem(refreshItem)
 
+        let reliabilityItem = NSMenuItem(title: "Interaction Reliability", action: nil, keyEquivalent: "")
+        reliabilityItem.submenu = interactionReliabilityMenu()
+        menu.addItem(reliabilityItem)
+
         menu.addItem(.separator())
 
         // Check for Updates
@@ -242,9 +237,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func interactionReliabilityMenu() -> NSMenu {
+        let submenu = NSMenu()
+        let current = Preferences.shared.interactionFallbackMode
+        let options: [(InteractionFallbackMode, String)] = [
+            (.ask, "Ask Before Safe Swap"),
+            (.alwaysUseSafeSwap, "Always Use Safe Swap"),
+            (.neverUseSafeSwap, "Never Use Safe Swap")
+        ]
+
+        for (mode, title) in options {
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(setInteractionFallbackMode(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = mode.rawValue
+            item.state = (mode == current) ? .on : .off
+            submenu.addItem(item)
+        }
+        return submenu
+    }
+
     @objc private func refreshNow() {
         scanner.scanAsync()
         captureIconsInBackground()
+    }
+
+    @objc private func setInteractionFallbackMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = InteractionFallbackMode(rawValue: raw) else { return }
+        Preferences.shared.interactionFallbackMode = mode
     }
 
     @objc private func openWelcome() {
@@ -379,5 +403,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         self.welcomeWindow = window
+    }
+
+    private func showTransientNotice(_ message: String) {
+        guard let button = statusItem.button else { return }
+        if let last = lastNoticeAt, Date().timeIntervalSince(last) < 2.0 {
+            return
+        }
+        lastNoticeAt = Date()
+
+        noticeDismissWorkItem?.cancel()
+        noticePopover?.performClose(nil)
+
+        let text = Text(message)
+            .font(.system(size: 12))
+            .foregroundStyle(.primary)
+            .padding(10)
+            .frame(width: 320, alignment: .leading)
+        let host = NSHostingController(rootView: text)
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: 320, height: 70)
+        popover.contentViewController = host
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+        noticePopover = popover
+        let dismiss = DispatchWorkItem { [weak self] in
+            self?.noticePopover?.performClose(nil)
+            self?.noticePopover = nil
+        }
+        noticeDismissWorkItem = dismiss
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8, execute: dismiss)
     }
 }
