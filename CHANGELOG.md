@@ -2,6 +2,20 @@
 
 All notable changes to MenuDown are documented here. Releases are available on the [GitHub Releases](https://github.com/Jmartinns/MenuDown/releases) page.
 
+## [0.6.0] — 2026-02-19
+
+### Added
+
+- **Click-to-Reveal** for notch-blocked menu bar items — detects items hidden behind the notch and provides reachability checking
+- Boundary-blocked notice popover alerts when items can't be moved past the notch boundary
+- `cancelActiveForwarding()` for cleaner interaction transitions before reorder
+
+### Changed
+
+- Removed SpacerManager entirely — original menubar items are always visible
+- Refactored MenuBarReorderer with Finder activation for better notch handling and greedy direct-placement algorithm
+- Enhanced ClickForwarder with `bestReachableClickPoint()` for notch-blocked item detection
+
 ## [0.5.0] — 2026-02-18
 
 ### Changed
