@@ -152,11 +152,6 @@ struct VerticalPanelView: View {
 
     private var footerBar: some View {
         HStack {
-            if let lastScan = scanner.lastScanDate {
-                Text("Scanned \(lastScan, style: .relative) ago")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
             Spacer()
             Button {
                 onSettingsClicked()

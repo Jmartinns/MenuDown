@@ -256,12 +256,25 @@ final class ClickForwarder {
     ) {
         clickLog("Notch-bypass: starting drag-to-expose for \(item.bundleID) at x=\(Int(position.x))")
 
+        // Activate Finder so the active app's text menus (File, Edit, …)
+        // retract and don't overlap the status-item zone.
+        let previousApp = NSWorkspace.shared.frontmostApplication
+        let finder = NSWorkspace.shared.runningApplications.first {
+            $0.bundleIdentifier == "com.apple.finder"
+        }
+        if let finder {
+            finder.activate()
+            Thread.sleep(forTimeInterval: 0.3)
+            clickLog("Notch-bypass: activated Finder to clear app menus.")
+        }
+
         performDragToExpose(
             for: item,
             position: position,
             size: size,
             generation: gen,
-            attempt: 1
+            attempt: 1,
+            previousApp: previousApp
         )
     }
 
@@ -275,17 +288,20 @@ final class ClickForwarder {
         position: CGPoint,
         size: CGSize,
         generation gen: UInt64,
-        attempt: Int
+        attempt: Int,
+        previousApp: NSRunningApplication? = nil
     ) {
         guard attempt <= 3 else {
             clickLog("Notch-bypass drag: max attempts reached, giving up.")
             showBlockedNoticeIfNeeded()
+            self.restorePreviousApp(previousApp)
             restoreAfterMenuDismissal()
             return
         }
 
         guard let scanner = scanner else {
             clickLog("Notch-bypass drag: no scanner, giving up.")
+            self.restorePreviousApp(previousApp)
             restoreAfterMenuDismissal()
             return
         }
@@ -338,6 +354,7 @@ final class ClickForwarder {
         guard let dragItem = dragCandidate, let startPt = dragCandidateCenter else {
             clickLog("Notch-bypass drag: no fully-visible item found to drag. Giving up.")
             showBlockedNoticeIfNeeded()
+            self.restorePreviousApp(previousApp)
             restoreAfterMenuDismissal()
             return
         }
@@ -383,6 +400,7 @@ final class ClickForwarder {
 
                 if isExposed {
                     clickLog("Notch-bypass drag: target is now visible. Resuming scanner so user can click it.")
+                    self.restorePreviousApp(previousApp)
                     self.restoreAfterMenuDismissal()
                 } else if attempt < 3 {
                     clickLog("Notch-bypass drag: target still not visible, retrying (attempt \(attempt + 1)).")
@@ -391,15 +409,23 @@ final class ClickForwarder {
                         position: newPos,
                         size: newSize,
                         generation: gen,
-                        attempt: attempt + 1
+                        attempt: attempt + 1,
+                        previousApp: previousApp
                     )
                 } else {
                     clickLog("Notch-bypass drag: max attempts reached, giving up.")
                     self.showBlockedNoticeIfNeeded()
+                    self.restorePreviousApp(previousApp)
                     self.restoreAfterMenuDismissal()
                 }
             }
         }
+    }
+
+    /// Restore the previously-active app after a notch-bypass operation.
+    private func restorePreviousApp(_ app: NSRunningApplication?) {
+        guard let app, app.bundleIdentifier != "com.apple.finder" else { return }
+        app.activate()
     }
 
     /// Simple two-point Command-drag (no waypoints).

@@ -51,7 +51,27 @@ final class MenuBarReorderer {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
+            // ── Clear the menu bar: activate Finder so the active app's
+            //    text menus (File, Edit, …) retract and don't overlap the
+            //    status-item zone.  We restore the previous app afterward. ──
+            let previousApp = NSWorkspace.shared.frontmostApplication
+            let finder = NSWorkspace.shared.runningApplications.first {
+                $0.bundleIdentifier == "com.apple.finder"
+            }
+
+            if let finder {
+                DispatchQueue.main.sync { finder.activate() }
+                Thread.sleep(forTimeInterval: 0.3)
+                debugLog("Activated Finder to clear app menus.")
+            }
+
             // Wait for the menubar to redraw after revealing
+            Thread.sleep(forTimeInterval: 0.3)
+
+            // ── Pre-expose: ensure every item's CENTER is reachable ──
+            // Drag the rightmost visible item left repeatedly until all
+            // items clear the notch.  Each drag pushes the whole row right.
+            self.preExposeAllItems(desiredOrder)
             Thread.sleep(forTimeInterval: 0.3)
 
             let desiredBundleOrder = desiredOrder.map(\.bundleID)
@@ -64,13 +84,16 @@ final class MenuBarReorderer {
             self.logPositions(initialPositions, label: "Initial positions")
 
             // ── Greedy direct-placement loop ──
-            // Each iteration picks the most-displaced item and drags it
-            // straight to its target slot.  A single drag across N items
-            // replaces N-1 slot-by-slot shuffles.
+            // Each iteration picks the most-displaced *reachable* item and
+            // drags it straight to its target slot.  Items behind the notch
+            // are only exposed on-demand when no reachable item can make
+            // progress — and after an expose the iteration restarts with
+            // fresh positions.
             var skippedItems: Set<String> = []
             var consecutiveFailures: [String: Int] = [:]
             let maxRetries = 3
-            let maxIterations = desiredOrder.count * 3 // generous safety limit
+            let maxIterations = desiredOrder.count * 4 // generous safety limit
+            var previousStates: [String] = [] // detect infinite loops
 
             for iteration in 1...maxIterations {
                 let freshPositions = self.readPositions(for: desiredOrder)
@@ -84,142 +107,215 @@ final class MenuBarReorderer {
                     break
                 }
 
-                // Find the item farthest from its target slot (excluding
-                // permanently-skipped items).
-                var best: (bundleID: String, currentSlot: Int, desiredSlot: Int, distance: Int)?
+                // Detect infinite loops: if we've seen this exact state
+                // before, we're stuck.
+                let stateKey = currentBundleOrder.joined(separator: ",")
+                let stateOccurrences = previousStates.filter { $0 == stateKey }.count
+                if stateOccurrences >= 2 {
+                    debugLog("State repeated \(stateOccurrences + 1) times, breaking to avoid infinite loop.")
+                    break
+                }
+                previousStates.append(stateKey)
+
+                // Build list of out-of-place items, separated into reachable
+                // vs unreachable.
+                struct Candidate {
+                    let bundleID: String
+                    let currentSlot: Int
+                    let desiredSlot: Int
+                    let distance: Int
+                    let dragStart: CGPoint
+                }
+
+                var reachableCandidates: [Candidate] = []
+                var unreachableBundleIDs: [(bundleID: String, distance: Int)] = []
+
                 for (desiredSlot, bundleID) in desiredBundleOrder.enumerated() {
                     guard !skippedItems.contains(bundleID) else { continue }
                     guard let currentSlot = currentBundleOrder.firstIndex(of: bundleID) else { continue }
                     guard currentSlot != desiredSlot else { continue }
                     let distance = abs(currentSlot - desiredSlot)
-                    if best == nil || distance > best!.distance {
-                        best = (bundleID, currentSlot, desiredSlot, distance)
+
+                    let info = freshSortedByX[currentSlot]
+                    let center = CGPoint(x: info.x + info.width / 2,
+                                         y: info.y + info.height / 2)
+
+                    // Try center, then bestReachablePoint
+                    var start: CGPoint?
+                    if self.hitTestPID(at: center) == self.itemPID(for: bundleID, in: desiredOrder) {
+                        start = center
+                    } else if let reachable = self.bestReachablePoint(
+                        forPID: self.itemPID(for: bundleID, in: desiredOrder),
+                        x: info.x, y: info.y,
+                        width: info.width, height: info.height
+                    ) {
+                        start = reachable
                     }
-                }
 
-                guard let move = best else {
-                    debugLog("All movable items in place (iteration \(iteration)).")
-                    break
-                }
-
-                let sourceInfo = freshSortedByX[move.currentSlot]
-                let sourceCenter = CGPoint(
-                    x: sourceInfo.x + sourceInfo.width / 2,
-                    y: sourceInfo.y + sourceInfo.height / 2
-                )
-
-                // Prefer center hit-test; fall back to bestReachablePoint.
-                // If neither works, try a single on-demand expose before giving up.
-                var dragStart: CGPoint?
-                if self.hitTestPID(at: sourceCenter) == self.itemPID(for: move.bundleID, in: desiredOrder) {
-                    dragStart = sourceCenter
-                } else if let reachable = self.bestReachablePoint(
-                    forPID: self.itemPID(for: move.bundleID, in: desiredOrder),
-                    x: sourceInfo.x,
-                    y: sourceInfo.y,
-                    width: sourceInfo.width,
-                    height: sourceInfo.height
-                ) {
-                    dragStart = reachable
-                }
-
-                // On-demand expose: if the item is unreachable, try to push
-                // it into visible space by dragging a visible neighbour left.
-                if dragStart == nil {
-                    debugLog("Item \(move.bundleID) unreachable — attempting on-demand expose.")
-                    if self.exposeItem(move.bundleID, among: desiredOrder, positions: freshSortedByX) {
-                        // Re-read and retry the hit-test
-                        Thread.sleep(forTimeInterval: 0.3)
-                        let retryPositions = self.readPositions(for: desiredOrder).sorted { $0.x < $1.x }
-                        if let retryInfo = retryPositions.first(where: { $0.bundleID == move.bundleID }) {
-                            let retryCenter = CGPoint(
-                                x: retryInfo.x + retryInfo.width / 2,
-                                y: retryInfo.y + retryInfo.height / 2
-                            )
-                            if self.hitTestPID(at: retryCenter) == self.itemPID(for: move.bundleID, in: desiredOrder) {
-                                dragStart = retryCenter
-                            } else if let reachable = self.bestReachablePoint(
-                                forPID: self.itemPID(for: move.bundleID, in: desiredOrder),
-                                x: retryInfo.x,
-                                y: retryInfo.y,
-                                width: retryInfo.width,
-                                height: retryInfo.height
-                            ) {
-                                dragStart = reachable
-                            }
-                        }
-                    }
-                }
-
-                guard let dragStart else {
-                    debugLog("Item \(move.bundleID) still not reachable after expose attempt, skipping permanently.")
-                    skippedItems.insert(move.bundleID)
-                    continue
-                }
-
-                let y = dragStart.y
-
-                // Build waypoints through every intermediate item so macOS
-                // registers each swap along the path.
-                let movingLeft = move.currentSlot > move.desiredSlot
-                var waypointXs: [CGFloat] = []
-                if movingLeft {
-                    for i in stride(from: move.currentSlot - 1, through: move.desiredSlot, by: -1) {
-                        waypointXs.append(freshSortedByX[i].x + freshSortedByX[i].width / 2)
-                    }
-                    waypointXs.append(freshSortedByX[move.desiredSlot].x - 6)
-                } else {
-                    for i in (move.currentSlot + 1)...move.desiredSlot {
-                        waypointXs.append(freshSortedByX[i].x + freshSortedByX[i].width / 2)
-                    }
-                    waypointXs.append(freshSortedByX[move.desiredSlot].x + freshSortedByX[move.desiredSlot].width + 4)
-                }
-
-                debugLog("Drag \(move.bundleID): slot \(move.currentSlot)→\(move.desiredSlot) (distance \(move.distance)) x=\(Int(dragStart.x)) → \(waypointXs.map { Int($0) })")
-
-                self.syntheticCommandDrag(
-                    from: dragStart,
-                    waypoints: waypointXs.map { CGPoint(x: $0, y: y) }
-                )
-
-                Thread.sleep(forTimeInterval: 0.4)
-
-                // Verify the drag had effect
-                let afterPositions = self.readPositions(for: desiredOrder).sorted { $0.x < $1.x }
-                self.logPositions(afterPositions, label: "After drag \(iteration)")
-
-                if let afterSlot = afterPositions.firstIndex(where: { $0.bundleID == move.bundleID }) {
-                    if afterSlot == move.desiredSlot {
-                        debugLog("\(move.bundleID) placed at slot \(move.desiredSlot) ✓")
-                        consecutiveFailures[move.bundleID] = 0
+                    if let start {
+                        reachableCandidates.append(Candidate(
+                            bundleID: bundleID,
+                            currentSlot: currentSlot,
+                            desiredSlot: desiredSlot,
+                            distance: distance,
+                            dragStart: start
+                        ))
                     } else {
-                        let beforeX = sourceInfo.x
-                        let afterX = afterPositions[afterSlot].x
-                        if abs(afterX - beforeX) < 0.5 {
-                            let failures = (consecutiveFailures[move.bundleID] ?? 0) + 1
-                            consecutiveFailures[move.bundleID] = failures
-                            debugLog("No progress for \(move.bundleID) (failure \(failures)/\(maxRetries)).")
-                            if failures >= maxRetries {
-                                debugLog("\(move.bundleID) failed \(maxRetries) times, skipping permanently.")
-                                skippedItems.insert(move.bundleID)
-                            }
-                        } else {
-                            // Made progress but didn't reach target — reset
-                            // failure count, next iteration will re-evaluate.
+                        unreachableBundleIDs.append((bundleID, distance))
+                    }
+                }
+
+                // Prefer the reachable item with the greatest displacement.
+                if let move = reachableCandidates.max(by: { $0.distance < $1.distance }) {
+                    let y = move.dragStart.y
+
+                    // Build waypoints using fresh positions.
+                    let movingLeft = move.currentSlot > move.desiredSlot
+                    var waypointXs: [CGFloat] = []
+                    if movingLeft {
+                        for i in stride(from: move.currentSlot - 1, through: move.desiredSlot, by: -1) {
+                            waypointXs.append(freshSortedByX[i].x + freshSortedByX[i].width / 2)
+                        }
+                        waypointXs.append(freshSortedByX[move.desiredSlot].x - 6)
+                    } else {
+                        for i in (move.currentSlot + 1)...move.desiredSlot {
+                            waypointXs.append(freshSortedByX[i].x + freshSortedByX[i].width / 2)
+                        }
+                        waypointXs.append(freshSortedByX[move.desiredSlot].x + freshSortedByX[move.desiredSlot].width + 4)
+                    }
+
+                    debugLog("Drag \(move.bundleID): slot \(move.currentSlot)→\(move.desiredSlot) (distance \(move.distance)) x=\(Int(move.dragStart.x)) → \(waypointXs.map { Int($0) })")
+
+                    self.syntheticCommandDrag(
+                        from: move.dragStart,
+                        waypoints: waypointXs.map { CGPoint(x: $0, y: y) }
+                    )
+
+                    Thread.sleep(forTimeInterval: 0.4)
+
+                    // Verify
+                    let afterPositions = self.readPositions(for: desiredOrder).sorted { $0.x < $1.x }
+                    self.logPositions(afterPositions, label: "After drag \(iteration)")
+
+                    if let afterSlot = afterPositions.firstIndex(where: { $0.bundleID == move.bundleID }) {
+                        if afterSlot == move.desiredSlot {
+                            debugLog("\(move.bundleID) placed at slot \(move.desiredSlot) ✓")
                             consecutiveFailures[move.bundleID] = 0
-                            debugLog("\(move.bundleID) moved to slot \(afterSlot), wanted \(move.desiredSlot). Will retry.")
+                        } else {
+                            let beforeX = freshSortedByX[move.currentSlot].x
+                            let afterX = afterPositions[afterSlot].x
+                            if abs(afterX - beforeX) < 0.5 {
+                                let failures = (consecutiveFailures[move.bundleID] ?? 0) + 1
+                                consecutiveFailures[move.bundleID] = failures
+                                debugLog("No progress for \(move.bundleID) (failure \(failures)/\(maxRetries)).")
+                                if failures >= maxRetries {
+                                    debugLog("\(move.bundleID) failed \(maxRetries) times, skipping permanently.")
+                                    skippedItems.insert(move.bundleID)
+                                }
+                            } else {
+                                consecutiveFailures[move.bundleID] = 0
+                                debugLog("\(move.bundleID) moved to slot \(afterSlot), wanted \(move.desiredSlot). Will retry.")
+                            }
                         }
                     }
+
+                } else if let toExpose = unreachableBundleIDs.max(by: { $0.distance < $1.distance }) {
+                    // No reachable items to move — try exposing one.
+                    debugLog("No reachable items to move. Exposing \(toExpose.bundleID).")
+                    if !self.exposeItem(toExpose.bundleID, among: desiredOrder, positions: freshSortedByX) {
+                        debugLog("\(toExpose.bundleID) expose failed, skipping permanently.")
+                        skippedItems.insert(toExpose.bundleID)
+                    }
+                    // After expose, loop restarts with fresh positions —
+                    // no drag attempted this iteration.
+                    Thread.sleep(forTimeInterval: 0.3)
+
+                } else {
+                    debugLog("No movable items remain (iteration \(iteration)).")
+                    break
                 }
             }
 
             debugLog("Reorder complete.")
 
             DispatchQueue.main.async { [weak self] in
+                // Restore the previously-active app
+                if let previousApp, previousApp.bundleIdentifier != "com.apple.finder" {
+                    previousApp.activate()
+                }
                 self?.scanner?.resume()
                 self?.scanner?.scanAsync()
             }
         }
+    }
+
+    // MARK: - Pre-expose all items
+
+    /// Shift the entire status item row right until every item's CENTER
+    /// is hit-testable (i.e. not behind the notch).
+    ///
+    /// Strategy: find the LEFTMOST reachable item and Cmd-drag it as far
+    /// left as possible (past all blocked items).  macOS pushes the blocked
+    /// items rightward.  Repeat up to N rounds.  This is monotonic —
+    /// each round only pushes items to the RIGHT, unlike the old approach
+    /// which could cycle by picking different drag handles.
+    private func preExposeAllItems(_ items: [MenuBarItem]) {
+        let selfBundleID = Bundle.main.bundleIdentifier ?? "com.menudown.app"
+
+        for round in 1...5 {
+            let positions = readPositions(for: items).sorted { $0.x < $1.x }
+
+            // Find all blocked items (center doesn't hit-test).
+            let blockedItems = positions.filter { posInfo in
+                guard posInfo.bundleID != selfBundleID else { return false }
+                guard let item = items.first(where: { $0.bundleID == posInfo.bundleID }) else { return false }
+                let center = CGPoint(x: posInfo.x + posInfo.width / 2,
+                                     y: posInfo.y + posInfo.height / 2)
+                return hitTestPID(at: center) != item.pid
+            }
+
+            if blockedItems.isEmpty {
+                debugLog("Pre-expose: all items reachable (round \(round)).")
+                return
+            }
+
+            debugLog("Pre-expose round \(round): \(blockedItems.count) blocked items, leftmost = \(blockedItems.first!.bundleID)@x=\(Int(blockedItems.first!.x))")
+
+            // Find the LEFTMOST reachable item — drag it as far left as
+            // possible.  This is the closest reachable item to the notch
+            // boundary, so it covers the most blocked items in one drag.
+            var dragCandidate: (info: ItemPosition, item: MenuBarItem, center: CGPoint)?
+            for posInfo in positions {
+                guard posInfo.bundleID != selfBundleID else { continue }
+                guard let item = items.first(where: { $0.bundleID == posInfo.bundleID }) else { continue }
+                let center = CGPoint(x: posInfo.x + posInfo.width / 2,
+                                     y: posInfo.y + posInfo.height / 2)
+                if hitTestPID(at: center) == item.pid {
+                    dragCandidate = (posInfo, item, center)
+                    break
+                }
+            }
+
+            guard let drag = dragCandidate else {
+                debugLog("Pre-expose: no reachable item found at all.")
+                return
+            }
+
+            // Drag it to the left of ALL blocked items.
+            let leftmostBlockedX = blockedItems.first!.x
+            let dragEndX = max(leftmostBlockedX - 30, 0)
+
+            debugLog("Pre-expose: Cmd-dragging \(drag.info.bundleID) from (\(Int(drag.center.x)),\(Int(drag.center.y))) to x=\(Int(dragEndX))")
+
+            syntheticCommandDrag(
+                from: drag.center,
+                waypoints: [CGPoint(x: dragEndX, y: drag.center.y)]
+            )
+
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+
+        debugLog("Pre-expose: max rounds reached.")
     }
 
     // MARK: - On-demand expose
