@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Reclaim your menubar from the MacBook notch.</strong><br>
-  A lightweight macOS utility that reveals hidden menubar items — automatically dragging them out from behind the notch so you can see and click them.
+  A lightweight macOS utility that reaches menubar items hidden behind the MacBook notch — clicking through when possible, and automatically dragging them into view when it can't.
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@ MacBook models with a notch cut into the menubar. When you run enough apps, thei
 
 MenuDown adds a single icon to your menubar. Click it (or press **⌃⌥⌘M**) to open a vertical panel showing every third-party menubar item — including the ones hidden behind the notch.
 
-When you click a hidden item, MenuDown doesn't just try to click through the notch (that would fail). Instead, it **physically drags the item out** from behind the notch into visible space, then clicks it. The menu opens exactly as if you'd clicked the real icon. This all happens automatically in a fraction of a second.
+When you click a hidden item, MenuDown first attempts to **click straight through the notch** — which often succeeds. If macOS swallows the event, MenuDown falls back to **physically dragging the item out** from behind the notch into visible space, then clicking it there. Either way, the menu opens exactly as if you'd clicked the real icon. This all happens automatically in a fraction of a second.
 
 <p align="center">
   <img src="gifs/MenuDown.gif" alt="MenuDown in action — revealing hidden menubar items" width="600">
@@ -45,7 +45,7 @@ When you click a hidden item, MenuDown doesn't just try to click through the not
 
 ## Features
 
-- **Click-to-Reveal** — Click any item in the panel, even one hidden behind the notch. MenuDown automatically drags it into view and clicks it, or sends a speculative click if it's already partially accessible. The footer shows "Revealing…" while working
+- **Click-to-Reveal** — Click any item in the panel, even one hidden behind the notch. MenuDown first tries to click through directly — if that fails, it automatically drags the item into view and clicks it there. The footer shows "Revealing…" while working
 - **Smart reordering** — Drag items to rearrange your menubar. MenuDown physically moves the real icons to match, intelligently exposing notch-blocked items first so every icon reaches its target
 - **Auto-discovery** — Finds all third-party menubar items automatically via the macOS Accessibility API
 - **App menu clearance** — When a foreground app's text menus (File, Edit, View…) overlap your status icons, MenuDown temporarily clears them so clicks and drags land on the right target
@@ -100,10 +100,10 @@ MenuDown uses the macOS **Accessibility API** (`AXUIElement`) to discover third-
 
 Clicking a visible item is straightforward: MenuDown warps the cursor to the real icon position and synthesizes a click.
 
-Clicking a **hidden** item is harder. macOS silently discards click events that land in the notch exclusion zone. MenuDown uses two strategies:
+Clicking a **hidden** item is harder. macOS often discards click events that land in the notch exclusion zone — but not always. MenuDown uses two strategies in sequence:
 
-1. **Drag-to-expose** — If a visible neighbor item exists, MenuDown synthesizes a **⌘-drag** to pull it past the blocked items, pushing the target into visible space, then clicks it there. The panel shows "Revealing [app name]…" in the footer while this happens.
-2. **Speculative click** — If no neighbor can be dragged (or the target is already partially accessible), MenuDown sends a click directly at the hidden item's reported position along with an Accessibility API action. In many cases macOS still delivers the event.
+1. **Speculative click** — MenuDown first sends a click directly at the hidden item's reported position along with an Accessibility API action. In many cases macOS still delivers the event and the menu opens immediately.
+2. **Drag-to-expose** — If the speculative click fails and a visible neighbor item exists, MenuDown synthesizes a **⌘-drag** to pull it past the blocked items, pushing the target into visible space, then clicks it there. The panel shows "Revealing [app name]…" in the footer while this happens.
 
 Both strategies are fully automatic — you just click the item in the panel. A one-time tooltip explains that items behind the notch may shift position when revealed. If a foreground app's text menus are overlapping the status-item area, MenuDown temporarily switches to Finder to clear them, then restores the original app.
 
