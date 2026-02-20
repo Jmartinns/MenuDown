@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/MenuDownIcon.png" alt="MenuDown" width="128" height="128" style="border-radius: 22%;" />
+  <img src="docs/menudown_glow.png" alt="MenuDown" width="180" />
 </p>
 
 <h1 align="center">MenuDown</h1>
