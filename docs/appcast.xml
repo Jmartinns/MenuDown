@@ -6,6 +6,29 @@
     <description>Most recent updates to MenuDown.</description>
     <language>en</language>
     <item>
+      <title>Version 0.6.1</title>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>0.6.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>What's New</h2>
+        <ul>
+          <li>Enhanced Click-to-Reveal with panel status indicator</li>
+          <li>speculative click fallback for stubborn notch-blocked items</li>
+          <li>first-time reveal tooltip</li>
+          <li>prefer true center for hit-testing before edge scan</li>
+        </ul>
+      ]]></description>
+      <pubDate>Fri, 20 Feb 2026 01:16:35 +0000</pubDate>
+      <enclosure
+        url="https://github.com/Jmartinns/MenuDown/releases/download/v0.6.1/MenuDown.dmg"
+        sparkle:edSignature="MVvENjI561DIOKNTDrenagXP+2rlYOX6N7kG72t9kfH3VsxwfyxcuhfjegkSYgd2QMDESiGNNHWidZ3g0mNYAA=="
+        length="3695877"
+        type="application/octet-stream"
+      />
+    </item>
+
+    <item>
       <title>Version 0.6.0</title>
       <sparkle:version>11</sparkle:version>
       <sparkle:shortVersionString>0.6.0</sparkle:shortVersionString>
