@@ -39,10 +39,9 @@ MenuDown adds a single icon to your menubar. Click it (or press **⌃⌥⌘M**) 
 
 When you click a hidden item, MenuDown doesn't just try to click through the notch (that would fail). Instead, it **physically drags the item out** from behind the notch into visible space, then clicks it. The menu opens exactly as if you'd clicked the real icon. This all happens automatically in a fraction of a second.
 
-<!-- TODO: Add screenshot -->
-<!-- <p align="center">
-  <img src="docs/screenshot.png" alt="MenuDown panel showing menubar items vertically" width="600">
-</p> -->
+<p align="center">
+  <img src="gifs/MenuDown.gif" alt="MenuDown in action — revealing hidden menubar items" width="600">
+</p>
 
 ## Features
 
