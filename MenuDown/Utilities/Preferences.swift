@@ -22,6 +22,7 @@ final class Preferences: ObservableObject {
         static let hasLaunchedBefore = "hasLaunchedBefore"
         static let itemOrder = "itemOrder"
         static let interactionFallbackMode = "interactionFallbackMode"
+        static let hasShownRevealTooltip = "hasShownRevealTooltip"
     }
 
     /// How frequently (seconds) to refresh the item list.
@@ -32,6 +33,12 @@ final class Preferences: ObservableObject {
     /// Whether the app should launch at login.
     @Published var launchAtLogin: Bool {
         didSet { defaults.set(launchAtLogin, forKey: Keys.launchAtLogin) }
+    }
+
+    /// Whether the first-time reveal tooltip has been shown.
+    var hasShownRevealTooltip: Bool {
+        get { defaults.bool(forKey: Keys.hasShownRevealTooltip) }
+        set { defaults.set(newValue, forKey: Keys.hasShownRevealTooltip) }
     }
 
     /// Bundle IDs the user has chosen to exclude from the vertical panel.

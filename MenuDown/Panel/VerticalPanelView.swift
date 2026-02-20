@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct VerticalPanelView: View {
 
     @ObservedObject var scanner: MenuBarScanner
+    @ObservedObject var clickForwarder: ClickForwarder
     let onItemClicked: (MenuBarItem) -> Void
     let onSettingsClicked: () -> Void
     let onReorderApplied: (([MenuBarItem]) -> Void)?
@@ -152,6 +153,15 @@ struct VerticalPanelView: View {
 
     private var footerBar: some View {
         HStack {
+            if !clickForwarder.revealStatus.isEmpty {
+                Text(clickForwarder.revealStatus)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: clickForwarder.revealStatus)
+            }
             Spacer()
             Button {
                 onSettingsClicked()

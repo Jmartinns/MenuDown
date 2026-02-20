@@ -15,9 +15,16 @@ private func clickLog(_ message: String) {
 
 /// Forwards user clicks from the vertical panel to the original menubar items
 /// via the Accessibility API.
-final class ClickForwarder {
+final class ClickForwarder: ObservableObject {
 
     private weak var scanner: MenuBarScanner?
+
+    /// Status text shown in the panel footer during notch-bypass operations.
+    /// Empty string means no status to show.
+    @Published var revealStatus: String = ""
+
+    /// Callback to show a transient notice (e.g. first-time reveal tooltip).
+    var onRevealNotice: ((String) -> Void)?
 
     /// Monotonically increasing generation counter. Every call to `click()`
     /// increments this. All delayed closures capture the generation at the
@@ -95,6 +102,7 @@ final class ClickForwarder {
                 // Activate MenuDown first to clear any overlapping text menus,
                 // then perform the synthetic click.
                 clickLog("Item reachable at (\(Int(clickPoint!.x)),\(Int(clickPoint!.y))); using normal click path.")
+                DispatchQueue.main.async { self.revealStatus = "" }
                 NSApp.activate(ignoringOtherApps: true)
 
                 self.after(0.15, gen: gen) {
@@ -113,6 +121,13 @@ final class ClickForwarder {
                 // Instead, activate the target app directly and send a
                 // synthetic click at the AX-reported center coordinates.
                 clickLog("Item unreachable; using notch-bypass click path.")
+                DispatchQueue.main.async {
+                    self.revealStatus = "Revealing \(item.appName)…"
+                    if !Preferences.shared.hasShownRevealTooltip {
+                        Preferences.shared.hasShownRevealTooltip = true
+                        self.onRevealNotice?("Items behind the notch may shift position when revealed")
+                    }
+                }
                 self.performNotchBypassClick(
                     for: item,
                     position: pos,
@@ -128,6 +143,7 @@ final class ClickForwarder {
     /// Restore scanner and AH polling after the menu closes.
     private func restoreAfterMenuDismissal() {
         clickLog("Menu dismissed — restoring scanner.")
+        revealStatus = ""
         scanner?.resume()
         scanner?.startScanning(interval: Preferences.shared.refreshInterval)
         AccessibilityHelper.shared.resumePolling()
@@ -292,10 +308,10 @@ final class ClickForwarder {
         previousApp: NSRunningApplication? = nil
     ) {
         guard attempt <= 3 else {
-            clickLog("Notch-bypass drag: max attempts reached, giving up.")
-            showBlockedNoticeIfNeeded()
-            self.restorePreviousApp(previousApp)
-            restoreAfterMenuDismissal()
+            clickLog("Notch-bypass drag: max attempts reached. Trying speculative click.")
+            let pos = currentPosition(of: item.axElement) ?? position
+            let sz = currentSize(of: item.axElement) ?? size
+            sendSpeculativeClick(for: item, position: pos, size: sz, generation: gen)
             return
         }
 
@@ -352,10 +368,8 @@ final class ClickForwarder {
         }
 
         guard let dragItem = dragCandidate, let startPt = dragCandidateCenter else {
-            clickLog("Notch-bypass drag: no fully-visible item found to drag. Giving up.")
-            showBlockedNoticeIfNeeded()
-            self.restorePreviousApp(previousApp)
-            restoreAfterMenuDismissal()
+            clickLog("Notch-bypass drag: no visible item to drag. Trying speculative click.")
+            sendSpeculativeClick(for: item, position: position, size: size, generation: gen)
             return
         }
 
@@ -399,9 +413,13 @@ final class ClickForwarder {
                     ) != nil
 
                 if isExposed {
-                    clickLog("Notch-bypass drag: target is now visible. Resuming scanner so user can click it.")
-                    self.restorePreviousApp(previousApp)
-                    self.restoreAfterMenuDismissal()
+                    clickLog("Notch-bypass drag: target is now visible. Sending click.")
+                    self.sendExposedItemClick(
+                        for: item,
+                        position: newPos,
+                        size: newSize,
+                        generation: gen
+                    )
                 } else if attempt < 3 {
                     clickLog("Notch-bypass drag: target still not visible, retrying (attempt \(attempt + 1)).")
                     self.performDragToExpose(
@@ -413,10 +431,13 @@ final class ClickForwarder {
                         previousApp: previousApp
                     )
                 } else {
-                    clickLog("Notch-bypass drag: max attempts reached, giving up.")
-                    self.showBlockedNoticeIfNeeded()
-                    self.restorePreviousApp(previousApp)
-                    self.restoreAfterMenuDismissal()
+                    clickLog("Notch-bypass drag: max attempts reached. Trying speculative click.")
+                    self.sendSpeculativeClick(
+                        for: item,
+                        position: newPos,
+                        size: newSize,
+                        generation: gen
+                    )
                 }
             }
         }
@@ -426,6 +447,56 @@ final class ClickForwarder {
     private func restorePreviousApp(_ app: NSRunningApplication?) {
         guard let app, app.bundleIdentifier != "com.apple.finder" else { return }
         app.activate()
+    }
+
+    /// Send a click to an item that was successfully exposed from behind the notch.
+    private func sendExposedItemClick(
+        for item: MenuBarItem,
+        position: CGPoint,
+        size: CGSize,
+        generation gen: UInt64
+    ) {
+        let center = CGPoint(x: position.x + size.width / 2,
+                             y: position.y + size.height / 2)
+        let clickPt = bestReachableClickPoint(
+            targetPID: item.pid,
+            position: position,
+            size: size
+        ) ?? center
+
+        warpCursor(to: clickPt)
+        syntheticClick(
+            targetPID: item.pid,
+            at: clickPt,
+            fallbackPosition: position,
+            fallbackSize: size
+        )
+        clickLog("Notch-bypass: click sent at (\(Int(clickPt.x)),\(Int(clickPt.y))) after successful expose.")
+        installDismissalMonitors(targetPID: item.pid, generation: gen, delay: 1.5)
+    }
+
+    /// Attempt a speculative click on an item that may still be behind the notch.
+    /// Sends both a synthetic CGEvent click and AX action fallbacks, since
+    /// either might succeed depending on the item's state.
+    private func sendSpeculativeClick(
+        for item: MenuBarItem,
+        position: CGPoint,
+        size: CGSize,
+        generation gen: UInt64
+    ) {
+        let center = CGPoint(x: position.x + size.width / 2,
+                             y: position.y + size.height / 2)
+        warpCursor(to: center)
+        syntheticClick(
+            targetPID: item.pid,
+            at: center,
+            fallbackPosition: position,
+            fallbackSize: size,
+            skipRetarget: true
+        )
+        clickLog("Notch-bypass: speculative click sent at (\(Int(center.x)),\(Int(center.y)))")
+        _ = performAXActionFallback(for: item)
+        installDismissalMonitors(targetPID: item.pid, generation: gen, delay: 1.5)
     }
 
     /// Simple two-point Command-drag (no waypoints).
@@ -724,8 +795,15 @@ final class ClickForwarder {
 
         guard baseMinX <= baseMaxX, baseMinY <= baseMaxY else { return nil }
 
+        // ── 1. Prefer the true center — most reliable for triggering menus ──
+        let center = CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
+        if hitTestPID(at: center) == targetPID {
+            return center
+        }
+
+        // ── 2. Fallback: scan from right to left for notch-edge slivers ──
         // AX frames can be stale near the notch. Search a halo around the
-        // reported frame and prefer rightmost points where slivers remain visible.
+        // reported frame for the rightmost reachable point.
         let minX = baseMinX - 24
         let maxX = baseMaxX + 24
         let minY = baseMinY

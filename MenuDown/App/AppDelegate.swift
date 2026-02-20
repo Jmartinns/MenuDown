@@ -114,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupPanel() {
         panelController = VerticalPanelController(
             scanner: scanner,
+            clickForwarder: clickForwarder,
             onItemClicked: { [weak self] item in
                 self?.clickForwarder.click(item)
             },
@@ -126,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         reorderer.onBoundaryBlocked = { [weak self] message in
+            self?.showTransientNotice(message)
+        }
+        clickForwarder.onRevealNotice = { [weak self] message in
             self?.showTransientNotice(message)
         }
     }

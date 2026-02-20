@@ -9,6 +9,7 @@ final class VerticalPanelController {
     private var eventMonitor: Any?
 
     private let scanner: MenuBarScanner
+    private let clickForwarder: ClickForwarder
     private let onItemClicked: (MenuBarItem) -> Void
     private let onSettingsClicked: () -> Void
     private let onReorderApplied: (([MenuBarItem]) -> Void)?
@@ -19,11 +20,13 @@ final class VerticalPanelController {
 
     init(
         scanner: MenuBarScanner,
+        clickForwarder: ClickForwarder,
         onItemClicked: @escaping (MenuBarItem) -> Void,
         onSettingsClicked: @escaping () -> Void,
         onReorderApplied: (([MenuBarItem]) -> Void)? = nil
     ) {
         self.scanner = scanner
+        self.clickForwarder = clickForwarder
         self.onItemClicked = onItemClicked
         self.onSettingsClicked = onSettingsClicked
         self.onReorderApplied = onReorderApplied
@@ -38,6 +41,7 @@ final class VerticalPanelController {
 
         let contentView = VerticalPanelView(
             scanner: scanner,
+            clickForwarder: clickForwarder,
             onItemClicked: { [weak self] item in
                 self?.dismiss()
                 self?.onItemClicked(item)
