@@ -2,6 +2,19 @@
 
 All notable changes to MenuDown are documented here. Releases are available on the [GitHub Releases](https://github.com/Jmartinns/MenuDown/releases) page.
 
+## [0.6.1] — 2026-02-19
+
+### Added
+
+- Panel footer status indicator shows reveal progress during notch-bypass operations
+- First-time reveal tooltip explains notch item behavior
+- Speculative click fallback when drag-to-expose reaches max attempts
+
+### Improved
+
+- Hit-testing now prefers true center point before falling back to edge scanning
+- Exposed items are now clicked automatically instead of requiring a second user click
+
 ## [0.6.0] — 2026-02-19
 
 ### Added
