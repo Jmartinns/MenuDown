@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jmartinns.github.io/MenuDown/sitemap.xml
